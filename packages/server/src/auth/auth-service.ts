@@ -99,6 +99,19 @@ export class AuthService {
   }
 
   /**
+   * Dynamically generate a fresh, non-static demo/guest session on the fly
+   */
+  public generateDynamicDemoSession(role: UserRole = 'TRADER', customEmail?: string): {
+    token: string;
+    user: Omit<UserRecord, 'passwordHash' | 'salt'>;
+  } {
+    const randomSuffix = crypto.randomBytes(3).toString('hex');
+    const email = customEmail || `${role.toLowerCase()}_${randomSuffix}@nexus.exchange`;
+    const autoPass = `Nexus_${crypto.randomBytes(8).toString('hex')}!`;
+    return this.register(email, autoPass, role);
+  }
+
+  /**
    * Authenticate user with password
    */
   public login(email: string, pass: string): { token: string; user: Omit<UserRecord, 'passwordHash' | 'salt'> } {

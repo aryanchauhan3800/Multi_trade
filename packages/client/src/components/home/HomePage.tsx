@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { TickerData, UserRole } from '@nexus/core';
+import React, { useState, useEffect } from 'react';
+import { TickerData, UserRole, PlatformMarketingData, AccountTierSpec } from '@nexus/core';
 import { AuthUser } from '../navigation/TopNav.js';
 import './HomePage.css';
 import {
@@ -55,6 +55,24 @@ export const HomePage: React.FC<HomePageProps> = ({
   onLogout,
 }) => {
   const [activeCategory, setActiveCategory] = useState<MarketCategory>('ALL');
+  const [marketingData, setMarketingData] = useState<PlatformMarketingData | null>(null);
+  const [tiers, setTiers] = useState<AccountTierSpec[]>([]);
+
+  useEffect(() => {
+    fetch('http://localhost:4000/api/platform/marketing')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setMarketingData(data);
+      })
+      .catch(() => {});
+
+    fetch('http://localhost:4000/api/platform/account-tiers')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.tiers) setTiers(data.tiers);
+      })
+      .catch(() => {});
+  }, []);
 
   // Market Symbol metadata
   const symbolDetails: Record<string, { name: string; category: MarketCategory; baseSpread: number }> = {
@@ -174,16 +192,22 @@ export const HomePage: React.FC<HomePageProps> = ({
       <section className="home-hero">
         <div className="home-hero-badge">
           <Zap size={13} color="#f59e0b" />
-          <span>ZERO REQUOTES • RAW SPREADS FROM 0.0 PIPS • UP TO 1:1000 LEVERAGE</span>
+          <span>{marketingData?.hero?.tagline || 'ZERO REQUOTES • RAW SPREADS FROM 0.0 PIPS • UP TO 1:1000 LEVERAGE'}</span>
         </div>
 
         <h1 className="home-hero-title">
-          Institutional Multi-Asset Trading with <span className="home-hero-title-gradient">Ultra-Low Latency</span> & Deep Liquidity
+          {marketingData?.hero?.headline ? (
+            marketingData.hero.headline
+          ) : (
+            <>
+              Institutional Multi-Asset Trading with <span className="home-hero-title-gradient">Ultra-Low Latency</span> & Deep Liquidity
+            </>
+          )}
         </h1>
 
         <p className="home-hero-subtitle">
-          Execute 1,000+ Forex pairs, Cryptocurrencies, Gold, Crude Oil, and Global Equity Indices on the high-frequency NEXUS engine.
-          Enjoy direct interbank order execution, zero rejections, and PBKDF2/SHA-512 encrypted account security.
+          {marketingData?.hero?.subheadline ||
+            'Execute 1,000+ Forex pairs, Cryptocurrencies, Gold, Crude Oil, and Global Equity Indices on the high-frequency NEXUS engine.'}
         </p>
 
         <div className="home-hero-actions">
@@ -200,35 +224,27 @@ export const HomePage: React.FC<HomePageProps> = ({
 
           <button
             className="btn-hero-secondary"
-            onClick={() => onLaunchTerminal('BTCUSD')}
+            onClick={() => onOpenAuth('register')}
             style={{ color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' }}
           >
             <Sparkles size={16} />
-            <span>Try $100,000 Demo</span>
+            <span>Try Virtual Demo</span>
           </button>
         </div>
 
         {/* 4 Pillars Stats HUD */}
         <div className="home-hero-stats">
-          <div className="home-hero-stat-card">
-            <span className="home-hero-stat-val">99.4%</span>
-            <span className="home-hero-stat-label">Execution in &lt; 25ms</span>
-          </div>
-
-          <div className="home-hero-stat-card">
-            <span className="home-hero-stat-val">0.0 Pips</span>
-            <span className="home-hero-stat-label">Raw Interbank Spreads</span>
-          </div>
-
-          <div className="home-hero-stat-card">
-            <span className="home-hero-stat-val">1:1000</span>
-            <span className="home-hero-stat-label">Flexible Max Leverage</span>
-          </div>
-
-          <div className="home-hero-stat-card">
-            <span className="home-hero-stat-val">100%</span>
-            <span className="home-hero-stat-label">Negative Balance Protected</span>
-          </div>
+          {(marketingData?.stats || [
+            { label: 'Execution in < 25ms', value: '99.4%' },
+            { label: 'Raw Interbank Spreads', value: '0.0 Pips' },
+            { label: 'Flexible Max Leverage', value: '1:1000' },
+            { label: 'Negative Balance Protected', value: '100%' },
+          ]).map((stat, idx) => (
+            <div key={idx} className="home-hero-stat-card">
+              <span className="home-hero-stat-val">{stat.value}</span>
+              <span className="home-hero-stat-label">{stat.label}</span>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -382,130 +398,98 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
 
         <div className="home-accounts-grid">
-          {/* Card 1: Standard */}
-          <div className="home-account-card">
-            <h3 className="home-account-name">Nexus Standard</h3>
-            <p className="home-account-desc">
-              Ideal for new and intermediate traders looking for commission-free trading with accessible entry.
-            </p>
+          {(tiers.length > 0
+            ? tiers
+            : [
+                {
+                  id: 'standard',
+                  name: 'Nexus Standard',
+                  description: 'Ideal for new and intermediate traders looking for commission-free trading with accessible entry.',
+                  spreadDisplay: '1.0 Pips',
+                  spreadUnit: 'Average Spread on Majors',
+                  featured: false,
+                  features: [
+                    'Zero Commission on all trades ($0.00)',
+                    'Minimum Deposit: $5.00',
+                    'Leverage scaling up to 1:1000',
+                    'Negative Balance Protection included',
+                    'Hedging & Scalping fully allowed',
+                  ],
+                },
+                {
+                  id: 'ultra-low',
+                  name: 'Nexus Ultra-Low',
+                  badge: 'MOST POPULAR',
+                  featured: true,
+                  description: 'Built for active day traders, swing traders, and scalpers demanding tight spreads and zero commissions.',
+                  spreadDisplay: '0.6 Pips',
+                  spreadUnit: 'Ultra-Low Spreads on Majors',
+                  features: [
+                    'Zero Commission ($0.00 per lot)',
+                    'Minimum Deposit: $50.00',
+                    'Leverage scaling up to 1:1000',
+                    'Direct DMA / STP order execution',
+                    'Sub-25ms average latency',
+                    'Negative Balance Protection included',
+                  ],
+                },
+                {
+                  id: 'raw-zero',
+                  name: 'Nexus Raw Zero',
+                  featured: false,
+                  description: 'Institutional raw interbank spreads for quantitative traders, funds, algorithmic bots, and EAs.',
+                  spreadDisplay: '0.0 Pips',
+                  spreadUnit: 'Raw Interbank Spreads',
+                  features: [
+                    'Raw Spread from 0.0 + $3.50 commission',
+                    'Minimum Deposit: $200.00',
+                    'Leverage up to 1:500',
+                    'Dedicated FIX 4.4 & WebSocket gateway',
+                    'VIP Priority Customer Desk & VPS Hosting',
+                  ],
+                },
+              ]
+          ).map((tier) => (
+            <div key={tier.id} className={`home-account-card ${tier.featured ? 'featured' : ''}`}>
+              {tier.badge ? <div className="home-account-badge">{tier.badge}</div> : null}
+              <h3 className="home-account-name">{tier.name}</h3>
+              <p className="home-account-desc">{tier.description}</p>
 
-            <div className="home-account-spread-hero">
-              <div className="home-account-spread-val">1.0 Pips</div>
-              <div className="home-account-spread-lbl">Average Spread on Majors</div>
+              <div
+                className="home-account-spread-hero"
+                style={
+                  tier.featured
+                    ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-subtle)' }
+                    : undefined
+                }
+              >
+                <div
+                  className="home-account-spread-val"
+                  style={tier.featured ? { color: 'var(--accent-primary)' } : undefined}
+                >
+                  {tier.spreadDisplay}
+                </div>
+                <div className="home-account-spread-lbl">{tier.spreadUnit}</div>
+              </div>
+
+              <ul className="home-account-features">
+                {tier.features.map((feat, fidx) => (
+                  <li key={fidx} className="home-account-feature-item">
+                    <CheckCircle2 size={15} color={tier.featured ? 'var(--accent-primary)' : 'var(--trade-buy)'} />
+                    <span>{feat}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                className={tier.featured ? 'btn-primary' : 'btn-secondary'}
+                style={{ width: '100%', justifyContent: 'center' }}
+                onClick={() => onOpenAuth('register')}
+              >
+                Open {tier.name}
+              </button>
             </div>
-
-            <ul className="home-account-features">
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>Zero Commission on all trades ($0.00)</span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>Minimum Deposit: <strong>$5.00</strong></span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>Leverage scaling up to <strong>1:1000</strong></span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>Negative Balance Protection included</span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>Hedging & Scalping fully allowed</span>
-              </li>
-            </ul>
-
-            <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => onOpenAuth('register')}>
-              Open Standard Account
-            </button>
-          </div>
-
-          {/* Card 2: Ultra-Low (Featured) */}
-          <div className="home-account-card featured">
-            <div className="home-account-badge">MOST POPULAR</div>
-            <h3 className="home-account-name">Nexus Ultra-Low</h3>
-            <p className="home-account-desc">
-              Built for active day traders, swing traders, and scalpers demanding tight spreads and zero commissions.
-            </p>
-
-            <div className="home-account-spread-hero" style={{ borderColor: 'var(--accent-primary)', background: 'var(--accent-subtle)' }}>
-              <div className="home-account-spread-val" style={{ color: 'var(--accent-primary)' }}>0.6 Pips</div>
-              <div className="home-account-spread-lbl">Ultra-Low Spreads on Majors</div>
-            </div>
-
-            <ul className="home-account-features">
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--accent-primary)" />
-                <span>Zero Commission ($0.00 per lot)</span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--accent-primary)" />
-                <span>Minimum Deposit: <strong>$50.00</strong></span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--accent-primary)" />
-                <span>Leverage scaling up to <strong>1:1000</strong></span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--accent-primary)" />
-                <span>Direct DMA / STP order execution</span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--accent-primary)" />
-                <span>Sub-25ms average latency</span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--accent-primary)" />
-                <span>Negative Balance Protection included</span>
-              </li>
-            </ul>
-
-            <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => onOpenAuth('register')}>
-              Open Ultra-Low Account
-            </button>
-          </div>
-
-          {/* Card 3: Raw Zero */}
-          <div className="home-account-card">
-            <h3 className="home-account-name">Nexus Raw Zero</h3>
-            <p className="home-account-desc">
-              Institutional raw interbank spreads for quantitative traders, funds, algorithmic bots, and EAs.
-            </p>
-
-            <div className="home-account-spread-hero">
-              <div className="home-account-spread-val">0.0 Pips</div>
-              <div className="home-account-spread-lbl">Raw Interbank Spreads</div>
-            </div>
-
-            <ul className="home-account-features">
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>Raw Spread from 0.0 + $3.50 commission</span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>Minimum Deposit: <strong>$200.00</strong></span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>Leverage up to <strong>1:500</strong></span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>Dedicated FIX 4.4 & WebSocket gateway</span>
-              </li>
-              <li className="home-account-feature-item">
-                <CheckCircle2 size={15} color="var(--trade-buy)" />
-                <span>VIP Priority Customer Desk & VPS Hosting</span>
-              </li>
-            </ul>
-
-            <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => onOpenAuth('register')}>
-              Open Raw Zero Account
-            </button>
-          </div>
+          ))}
         </div>
       </section>
 
@@ -520,65 +504,22 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
 
         <div className="home-advantages-grid">
-          <div className="home-advantage-card">
-            <div className="home-advantage-icon">
-              <Clock size={22} />
+          {(marketingData?.advantages || [
+            { id: 'no-requotes', title: 'Strict No-Requotes Policy', description: '100% of trades are executed at the requested price or better. Zero artificial slippage, no dealer desk rejections, and no dealer intervention.' },
+            { id: 'latency', title: 'Sub-25ms Order Execution', description: 'Equinix NY4 / LD4 cross-connected trading servers processing up to 50,000 orders per second with ultra-low latency fiber optics.' },
+            { id: 'protection', title: 'Negative Balance Protection', description: 'Your downside risk is strictly limited to your deposited funds. Real-time margin calls trigger at 100% and auto-stop-out protects at 50%.' },
+            { id: 'wallet', title: 'Unified Multi-Asset Wallet', description: 'Trade Crypto, FX, Gold, Oil, and US Equities from a single consolidated account balance with unified portfolio margin calculations.' },
+            { id: 'security', title: 'PBKDF2/SHA-512 Security', description: 'Zero plain-text password storage. All credentials hashed with 100,000 iterations and authenticated over strictly encrypted TLS sessions.' },
+            { id: 'liquidity', title: 'Tier-1 Segregated Liquidity', description: 'Direct DMA pricing aggregated from global Tier-1 investment banks and cryptocurrency market makers for maximum book depth.' },
+          ]).map((adv, idx) => (
+            <div key={adv.id || idx} className="home-advantage-card">
+              <div className="home-advantage-icon">
+                {idx === 0 ? <Clock size={22} /> : idx === 1 ? <Zap size={22} /> : idx === 2 ? <Shield size={22} /> : idx === 3 ? <Sliders size={22} /> : idx === 4 ? <Lock size={22} /> : <Award size={22} />}
+              </div>
+              <h4 className="home-advantage-title">{adv.title}</h4>
+              <p className="home-advantage-desc">{adv.description}</p>
             </div>
-            <h4 className="home-advantage-title">Strict No-Requotes Policy</h4>
-            <p className="home-advantage-desc">
-              100% of trades are executed at the requested price or better. No artificial slippage, no dealer desk rejections, and no dealer intervention.
-            </p>
-          </div>
-
-          <div className="home-advantage-card">
-            <div className="home-advantage-icon">
-              <Zap size={22} />
-            </div>
-            <h4 className="home-advantage-title">Sub-25ms Order Execution</h4>
-            <p className="home-advantage-desc">
-              Equinix NY4 / LD4 cross-connected trading servers processing up to 50,000 orders per second with ultra-low latency fiber optics.
-            </p>
-          </div>
-
-          <div className="home-advantage-card">
-            <div className="home-advantage-icon">
-              <Shield size={22} />
-            </div>
-            <h4 className="home-advantage-title">Negative Balance Protection</h4>
-            <p className="home-advantage-desc">
-              Your downside risk is strictly limited to your deposited funds. Real-time margin calls trigger at 100% and auto-stop-out protects at 50%.
-            </p>
-          </div>
-
-          <div className="home-advantage-card">
-            <div className="home-advantage-icon">
-              <Sliders size={22} />
-            </div>
-            <h4 className="home-advantage-title">Unified Multi-Asset Wallet</h4>
-            <p className="home-advantage-desc">
-              Trade Crypto, FX, Gold, Oil, and US Equities from a single consolidated account balance with unified portfolio margin calculations.
-            </p>
-          </div>
-
-          <div className="home-advantage-card">
-            <div className="home-advantage-icon">
-              <Lock size={22} />
-            </div>
-            <h4 className="home-advantage-title">PBKDF2/SHA-512 Security</h4>
-            <p className="home-advantage-desc">
-              Zero plain-text password storage. All credentials hashed with 100,000 iterations and authenticated over strictly encrypted TLS sessions.
-            </p>
-          </div>
-
-          <div className="home-advantage-card">
-            <div className="home-advantage-icon">
-              <Award size={22} />
-            </div>
-            <h4 className="home-advantage-title">Tier-1 Segregated Liquidity</h4>
-            <p className="home-advantage-desc">
-              Direct DMA pricing aggregated from global Tier-1 investment banks and cryptocurrency market makers for maximum book depth.
-            </p>
-          </div>
+          ))}
         </div>
       </section>
 
@@ -685,33 +626,27 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-          <div className="home-hero-stat-card">
-            <Wallet size={24} color="var(--accent-primary)" style={{ marginBottom: 12 }} />
-            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>Crypto Custody</span>
-            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>USDT (TRC-20/ERC-20), BTC, ETH</span>
-            <span style={{ fontSize: 11, color: 'var(--trade-buy)', marginTop: 8, fontWeight: 600 }}>0% Deposit Fee</span>
-          </div>
-
-          <div className="home-hero-stat-card">
-            <DollarSign size={24} color="#8b5cf6" style={{ marginBottom: 12 }} />
-            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>Cards & Mobile</span>
-            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Visa, Mastercard, Apple Pay</span>
-            <span style={{ fontSize: 11, color: 'var(--trade-buy)', marginTop: 8, fontWeight: 600 }}>Instant Funding</span>
-          </div>
-
-          <div className="home-hero-stat-card">
-            <Globe size={24} color="#06b6d4" style={{ marginBottom: 12 }} />
-            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>Bank Wire & SEPA</span>
-            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Direct Bank Transfer (USD, EUR)</span>
-            <span style={{ fontSize: 11, color: 'var(--trade-buy)', marginTop: 8, fontWeight: 600 }}>Same-Day Settlement</span>
-          </div>
-
-          <div className="home-hero-stat-card">
-            <Shield size={24} color="var(--trade-buy)" style={{ marginBottom: 12 }} />
-            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>Segregated Accounts</span>
-            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Isolated Tier-1 Bank Storage</span>
-            <span style={{ fontSize: 11, color: 'var(--trade-buy)', marginTop: 8, fontWeight: 600 }}>100% Protected</span>
-          </div>
+          {(marketingData?.custodyMethods || [
+            { id: 'crypto', title: 'Crypto Custody', subtitle: 'USDT (TRC-20/ERC-20), BTC, ETH', fee: '0% Deposit Fee' },
+            { id: 'cards', title: 'Cards & Mobile', subtitle: 'Visa, Mastercard, Apple Pay', fee: 'Instant Funding' },
+            { id: 'wire', title: 'Bank Wire & SEPA', subtitle: 'Direct Bank Transfer (USD, EUR)', fee: 'Same-Day Settlement' },
+            { id: 'segregated', title: 'Segregated Accounts', subtitle: 'Isolated Tier-1 Bank Storage', fee: '100% Protected' },
+          ]).map((cust, idx) => (
+            <div key={cust.id || idx} className="home-hero-stat-card">
+              {idx === 0 ? (
+                <Wallet size={24} color="var(--accent-primary)" style={{ marginBottom: 12 }} />
+              ) : idx === 1 ? (
+                <DollarSign size={24} color="#8b5cf6" style={{ marginBottom: 12 }} />
+              ) : idx === 2 ? (
+                <Globe size={24} color="#06b6d4" style={{ marginBottom: 12 }} />
+              ) : (
+                <Shield size={24} color="var(--trade-buy)" style={{ marginBottom: 12 }} />
+              )}
+              <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>{cust.title}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>{cust.subtitle}</span>
+              <span style={{ fontSize: 11, color: 'var(--trade-buy)', marginTop: 8, fontWeight: 600 }}>{cust.fee}</span>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -719,7 +654,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       <section className="home-cta-banner">
         <h2 className="home-cta-title">Ready to Experience True Institutional Execution?</h2>
         <p className="home-cta-desc">
-          Open your live account in 60 seconds or test your trading strategies completely risk-free with $100,000 in virtual paper funds.
+          Open your live account in 60 seconds or test your trading strategies completely risk-free with customizable virtual paper funds.
         </p>
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>

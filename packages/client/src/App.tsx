@@ -91,8 +91,12 @@ export const App: React.FC = () => {
 
   // Sync state from server OMS
   const syncServerState = useCallback(() => {
+    const token = localStorage.getItem('nexus_auth_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     // 1. Account Summary
-    fetch(`${SERVER_BASE}/api/account/summary`)
+    fetch(`${SERVER_BASE}/api/account/summary`, { headers })
       .then((res) => (res.ok ? res.json() : null))
       .then((acc) => {
         if (acc && typeof acc.totalBalance === 'number') {
@@ -205,9 +209,12 @@ export const App: React.FC = () => {
       .catch(() => {});
   }, [syncServerState]);
 
-  const handleAuthSuccess = (session: { token: string; user: AuthUser }) => {
+  const handleAuthSuccess = (session: { token: string; user: AuthUser; initialBalance?: number }) => {
     setCurrentUser(session.user);
     setUserRole(session.user.role);
+    if (session.initialBalance !== undefined) {
+      setBalance(session.initialBalance);
+    }
     localStorage.setItem('nexus_auth_token', session.token);
     syncServerState();
     setAuditLogs((prev) => [
@@ -215,7 +222,7 @@ export const App: React.FC = () => {
         id: `aud_auth_${Date.now()}`,
         time: new Date().toLocaleTimeString(),
         action: 'USER_AUTHENTICATED',
-        details: `Active session established for ${session.user.email} (${session.user.role}). Account: ${session.user.accountId}`,
+        details: `Active session established for ${session.user.email} (${session.user.role}). Account: ${session.user.accountId}${session.initialBalance ? ` with $${session.initialBalance.toLocaleString()} dynamic capital` : ''}.`,
         status: 'SUCCESS',
       },
       ...prev,

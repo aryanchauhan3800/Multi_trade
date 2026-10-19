@@ -17,7 +17,11 @@ import { UserRole } from '@nexus/core';
 
 interface AuthModalProps {
   onClose: () => void;
-  onAuthSuccess: (session: { token: string; user: { id: string; email: string; role: UserRole; accountId: string } }) => void;
+  onAuthSuccess: (session: {
+    token: string;
+    user: { id: string; email: string; role: UserRole; accountId: string };
+    initialBalance?: number;
+  }) => void;
   initialTab?: 'login' | 'register';
 }
 
@@ -32,14 +36,41 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [role, setRole] = useState<UserRole>('TRADER');
+  const [initialBalance, setInitialBalance] = useState<number>(50000);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Quick Demo Logins
-  const handleQuickLogin = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    submitAuth(demoEmail, demoPass, 'login');
+  // Generate 100% Dynamic On-Demand Demo Session (No Static Hardcoded Credentials)
+  const handleInstantDemoSession = async (demoRole: UserRole = 'TRADER') => {
+    setErrorMsg(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${SERVER_BASE}/api/auth/demo-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: demoRole, initialBalance }),
+      });
+
+      const data = (await res.json()) as any;
+      if (!res.ok) throw new Error(data.error || 'Failed to initialize dynamic demo account');
+
+      if (data.token) {
+        localStorage.setItem('nexus_auth_token', data.token);
+      }
+
+      onAuthSuccess({
+        token: data.token,
+        user: data.user,
+        initialBalance: data.initialBalance,
+      });
+
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to initialize dynamic session');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const submitAuth = async (authEmail = email, authPass = password, authTab = tab) => {
@@ -54,6 +85,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       };
       if (authTab === 'register') {
         payload.role = role;
+        payload.initialBalance = initialBalance;
       }
 
       const res = await fetch(`${SERVER_BASE}${endpoint}`, {
@@ -76,6 +108,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       onAuthSuccess({
         token: data.token,
         user: data.user,
+        initialBalance: data.initialBalance,
       });
 
       onClose();
@@ -173,59 +206,89 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         <div className="modal-body" style={{ padding: '20px' }}>
-          {/* Quick Demo Logins Bar (if on Login tab) */}
-          {tab === 'login' && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Zap size={13} color="#f59e0b" /> One-Click Quick Logins:
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('admin@nexus.exchange', 'NexusAdmin2026!')}
-                  style={{
-                    background: 'var(--bg-surface-elevated)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-xs)',
-                    padding: '8px 10px',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 2,
-                    transition: 'var(--trans-fast)',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
-                >
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6' }}>Administrator</span>
-                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>admin@nexus.exchange</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('trader@nexus.exchange', 'Trader2026!')}
-                  style={{
-                    background: 'var(--bg-surface-elevated)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-xs)',
-                    padding: '8px 10px',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 2,
-                    transition: 'var(--trans-fast)',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
-                >
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-primary)' }}>Pro Trader</span>
-                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>trader@nexus.exchange</span>
-                </button>
-              </div>
+          {/* Dynamic Starting Capital Selector */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Initial Virtual Capital:</span>
+              <strong className="num" style={{ color: 'var(--trade-buy)' }}>${initialBalance.toLocaleString()} USD</strong>
             </div>
-          )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+              {[5000, 10000, 25000, 50000, 100000].map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => setInitialBalance(amt)}
+                  style={{
+                    background: initialBalance === amt ? 'var(--accent-subtle)' : 'var(--bg-surface-elevated)',
+                    border: `1px solid ${initialBalance === amt ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+                    borderRadius: 'var(--radius-xs)',
+                    padding: '6px 2px',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    color: initialBalance === amt ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                    transition: 'var(--trans-fast)',
+                  }}
+                >
+                  ${amt >= 1000 ? `${amt / 1000}k` : amt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Dynamic On-Demand Demo Generators */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Zap size={13} color="#f59e0b" /> Instant Dynamic Demo Session (Zero Static Credentials):
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => handleInstantDemoSession('TRADER')}
+                disabled={loading}
+                style={{
+                  background: 'var(--bg-surface-elevated)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '9px 10px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  transition: 'var(--trans-fast)',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-primary)' }}>⚡ Fresh Demo Trader</span>
+                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Generate dynamic trader</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleInstantDemoSession('ADMIN')}
+                disabled={loading}
+                style={{
+                  background: 'var(--bg-surface-elevated)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '9px 10px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  transition: 'var(--trans-fast)',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#8b5cf6')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6' }}>🛡️ Fresh Demo Admin</span>
+                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Generate dynamic admin</span>
+              </button>
+            </div>
+          </div>
 
           {/* Error Banner */}
           {errorMsg && (

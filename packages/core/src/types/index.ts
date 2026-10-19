@@ -197,3 +197,50 @@ export interface WalletTransaction {
   createdAt: string;
   completedAt?: string;
 }
+
+export interface PlatformMarketingData {
+  hero: {
+    tagline: string;
+    headline: string;
+    subheadline: string;
+    executionSpeedMs: number;
+    activeMarketsCount: number;
+    lowestSpreadPips: number;
+    maxLeverage: string;
+    protectionPolicy: string;
+  };
+  stats: Array<{
+    label: string;
+    value: string;
+    highlight?: boolean;
+  }>;
+  advantages: Array<{
+    id: string;
+    title: string;
+    description: string;
+    badge?: string;
+  }>;
+  custodyMethods: Array<{
+    id: string;
+    title: string;
+    subtitle: string;
+    fee: string;
+  }>;
+}
+
+export interface AccountTierSpec {
+  id: string;
+  name: string;
+  badge?: string;
+  featured?: boolean;
+  description: string;
+  spreadDisplay: string;
+  spreadRawValue: number;
+  spreadUnit: string;
+  commission: string;
+  minDeposit: number;
+  maxLeverage: string;
+  executionVenue: string;
+  features: string[];
+}
+

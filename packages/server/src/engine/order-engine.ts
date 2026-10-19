@@ -63,6 +63,19 @@ export class OrderEngine {
     this.startSlTpMonitor();
   }
 
+  public initializeAccount(accountId: string, startingBalance = 50000.0, currency = 'USD'): void {
+    this.balances.set(accountId, {
+      total: startingBalance,
+      locked: 0.0,
+      currency,
+    });
+    this.events.onAuditLog?.({
+      action: 'ACCOUNT_INITIALIZED',
+      details: `Account ${accountId} initialized with dynamic capital of $${startingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${currency}.`,
+      status: 'SUCCESS',
+    });
+  }
+
   public getAccountBalance(accountId = 'acc_default') {
     const bal = this.balances.get(accountId) || { total: 100000.0, locked: 0.0, currency: 'USD' };
     const usedMargin = Array.from(this.positions.values()).reduce((sum, p) => sum + p.margin, 0);
