@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexus_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-nexus_exchange}
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nexus_admin -d nexus_exchange']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: nexus-server
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      ENVIRONMENT_MODE: ${ENVIRONMENT_MODE:-PAPER_TRADING}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nexus_admin}:${POSTGRES_PASSWORD:-nexus_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-nexus_exchange}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-nexus_super_secret_institutional_key_2026}
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
+      ALPACA_API_SECRET: ${ALPACA_API_SECRET:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      COINBASE_COMMERCE_KEY: ${COINBASE_COMMERCE_KEY:-}
+    ports:
+      - '4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:4000/api/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: nexus-client
+    restart: unless-stopped
+    ports:
+      - '80:80'
+    depends_on:
+      server:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+    driver: local

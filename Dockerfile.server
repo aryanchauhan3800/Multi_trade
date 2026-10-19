@@ -1,0 +1,44 @@
+# Multi-Stage Production Dockerfile for Nexus Exchange Server
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy root and package dependency manifests
+COPY package.json package-lock.json ./
+COPY packages/core/package.json ./packages/core/
+COPY packages/server/package.json ./packages/server/
+COPY packages/server/prisma ./packages/server/prisma/
+
+# Install dependencies
+RUN npm ci
+
+# Copy source trees
+COPY tsconfig.base.json ./
+COPY packages/core ./packages/core
+COPY packages/server ./packages/server
+
+# Build core and server
+RUN npm run build --workspace=@nexus/core
+RUN npm run build --workspace=@nexus/server
+
+# --- Production Runner ---
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=4000
+
+# Copy runtime assets and built code
+COPY package.json package-lock.json ./
+COPY packages/core/package.json ./packages/core/
+COPY packages/server/package.json ./packages/server/
+COPY --from=builder /app/packages/core/dist ./packages/core/dist
+COPY --from=builder /app/packages/server/dist ./packages/server/dist
+COPY packages/server/prisma ./packages/server/prisma
+
+# Install production dependencies only
+RUN npm ci --omit=dev
+
+EXPOSE 4000
+
+CMD ["node", "packages/server/dist/server.js"]

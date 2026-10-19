@@ -17,6 +17,7 @@ interface TradingChartProps {
   openPosition?: Position;
   pendingOrder?: Order;
   onUpdateSlTp?: (sl?: number, tp?: number) => void;
+  onUpdatePosition?: (positionId: string, updates: { stopLoss?: number; takeProfit?: number }) => void;
 }
 
 export type ChartType = 'candlestick' | 'line' | 'area';
@@ -29,6 +30,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   openPosition,
   pendingOrder,
   onUpdateSlTp,
+  onUpdatePosition,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,6 +42,11 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const [showVolume, setShowVolume] = useState<boolean>(true);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+  // Interactive SL/TP Dragging State
+  const [dragTarget, setDragTarget] = useState<'SL' | 'TP' | null>(null);
+  const [dragPrice, setDragPrice] = useState<number | null>(null);
+  const boundsRef = useRef({ minPrice: 0, maxPrice: 1, chartHeight: 1, chartWidth: 1 });
 
   // Indicators calculation
   const ma20 = useMemo(() => {
@@ -111,6 +118,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     minPrice -= priceRange * 0.03;
     maxPrice += priceRange * 0.03;
     const visiblePriceRange = maxPrice - minPrice;
+    boundsRef.current = { minPrice, maxPrice, chartHeight, chartWidth };
 
     const priceToY = (price: number) => {
       return chartHeight - ((price - minPrice) / visiblePriceRange) * chartHeight;
@@ -314,10 +322,31 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       ctx.font = 'bold 10px sans-serif';
       ctx.fillText(pnlText, 16, entryY + 4);
 
-      // Stop Loss Handle Line
-      if (openPosition.stopLoss) {
-        const slY = priceToY(openPosition.stopLoss);
+      // Liquidation Price Line (Critical Margin Risk Level)
+      if (openPosition.liquidationPrice) {
+        const liqY = priceToY(openPosition.liquidationPrice);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, liqY);
+        ctx.lineTo(chartWidth, liqY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(chartWidth - 110, liqY - 9, 105, 18);
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText(`LIQ: ${openPosition.liquidationPrice.toFixed(openPosition.liquidationPrice > 500 ? 2 : 4)}`, chartWidth - 105, liqY + 4);
+      }
+
+      // Stop Loss Handle Line (Draggable)
+      const activeSl = dragTarget === 'SL' && dragPrice !== null ? dragPrice : openPosition.stopLoss;
+      if (activeSl) {
+        const slY = priceToY(activeSl);
         ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = dragTarget === 'SL' ? 2 : 1;
         ctx.setLineDash([4, 2]);
         ctx.beginPath();
         ctx.moveTo(0, slY);
@@ -325,17 +354,19 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         ctx.stroke();
         ctx.setLineDash([]);
 
-        ctx.fillStyle = '#ef4444';
-        ctx.fillRect(chartWidth - 90, slY - 9, 85, 18);
+        ctx.fillStyle = dragTarget === 'SL' ? '#dc2626' : '#ef4444';
+        ctx.fillRect(chartWidth - 100, slY - 9, 95, 18);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
-        ctx.fillText(`SL: ${openPosition.stopLoss}`, chartWidth - 84, slY + 4);
+        ctx.fillText(`SL: ${activeSl.toFixed(activeSl > 500 ? 2 : 5)} ↕`, chartWidth - 95, slY + 4);
       }
 
-      // Take Profit Handle Line
-      if (openPosition.takeProfit) {
-        const tpY = priceToY(openPosition.takeProfit);
+      // Take Profit Handle Line (Draggable)
+      const activeTp = dragTarget === 'TP' && dragPrice !== null ? dragPrice : openPosition.takeProfit;
+      if (activeTp) {
+        const tpY = priceToY(activeTp);
         ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = dragTarget === 'TP' ? 2 : 1;
         ctx.setLineDash([4, 2]);
         ctx.beginPath();
         ctx.moveTo(0, tpY);
@@ -343,11 +374,11 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         ctx.stroke();
         ctx.setLineDash([]);
 
-        ctx.fillStyle = '#10b981';
-        ctx.fillRect(chartWidth - 90, tpY - 9, 85, 18);
+        ctx.fillStyle = dragTarget === 'TP' ? '#059669' : '#10b981';
+        ctx.fillRect(chartWidth - 100, tpY - 9, 95, 18);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
-        ctx.fillText(`TP: ${openPosition.takeProfit}`, chartWidth - 84, tpY + 4);
+        ctx.fillText(`TP: ${activeTp.toFixed(activeTp > 500 ? 2 : 5)} ↕`, chartWidth - 95, tpY + 4);
       }
     }
 
@@ -416,16 +447,80 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     }
   };
 
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!openPosition) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const { minPrice, maxPrice, chartHeight, chartWidth } = boundsRef.current;
+    const visiblePriceRange = maxPrice - minPrice;
+    if (visiblePriceRange <= 0) return;
+
+    const priceToY = (price: number) => chartHeight - ((price - minPrice) / visiblePriceRange) * chartHeight;
+
+    if (openPosition.stopLoss) {
+      const slY = priceToY(openPosition.stopLoss);
+      if (Math.abs(y - slY) <= 12 && x >= chartWidth - 110) {
+        setDragTarget('SL');
+        setDragPrice(openPosition.stopLoss);
+        return;
+      }
+    }
+
+    if (openPosition.takeProfit) {
+      const tpY = priceToY(openPosition.takeProfit);
+      if (Math.abs(y - tpY) <= 12 && x >= chartWidth - 110) {
+        setDragTarget('TP');
+        setDragPrice(openPosition.takeProfit);
+        return;
+      }
+    }
+  };
+
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setMousePos({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setMousePos({ x, y });
+
+    const { minPrice, maxPrice, chartHeight, chartWidth } = boundsRef.current;
+    const visiblePriceRange = maxPrice - minPrice;
+
+    if (dragTarget && visiblePriceRange > 0) {
+      const newPrice = maxPrice - (y / chartHeight) * visiblePriceRange;
+      setDragPrice(Number(newPrice.toFixed(newPrice > 500 ? 2 : 5)));
+      return;
+    }
+
+    if (openPosition && visiblePriceRange > 0 && canvasRef.current) {
+      const priceToY = (price: number) => chartHeight - ((price - minPrice) / visiblePriceRange) * chartHeight;
+      const isOverSl = openPosition.stopLoss && Math.abs(y - priceToY(openPosition.stopLoss)) <= 12 && x >= chartWidth - 110;
+      const isOverTp = openPosition.takeProfit && Math.abs(y - priceToY(openPosition.takeProfit)) <= 12 && x >= chartWidth - 110;
+
+      canvasRef.current.style.cursor = isOverSl || isOverTp ? 'ns-resize' : 'crosshair';
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (dragTarget && dragPrice !== null && openPosition) {
+      if (dragTarget === 'SL') {
+        onUpdatePosition?.(openPosition.id, { stopLoss: dragPrice });
+        onUpdateSlTp?.(dragPrice, openPosition.takeProfit);
+      } else if (dragTarget === 'TP') {
+        onUpdatePosition?.(openPosition.id, { takeProfit: dragPrice });
+        onUpdateSlTp?.(openPosition.stopLoss, dragPrice);
+      }
+    }
+    setDragTarget(null);
+    setDragPrice(null);
   };
 
   const handleMouseLeave = () => {
+    if (dragTarget) {
+      handleMouseUp();
+    }
     setMousePos(null);
   };
 
@@ -503,7 +598,9 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         <canvas
           ref={canvasRef}
           className="chart-canvas"
+          onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
         />
 

@@ -24,6 +24,7 @@ export class BinanceMarketDataProvider implements MarketDataProvider {
 
   private activeStreams: Set<string> = new Set();
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private isClosing = false;
 
   // Supported crypto symbols mapped to Binance symbols (e.g. BTCUSD -> btcusdt)
   private symbolMapping: Record<string, string> = {
@@ -42,6 +43,7 @@ export class BinanceMarketDataProvider implements MarketDataProvider {
 
   public async connect(): Promise<void> {
     if (this.isConnected && this.ws) return;
+    this.isClosing = false;
 
     return new Promise((resolve) => {
       try {
@@ -66,22 +68,28 @@ export class BinanceMarketDataProvider implements MarketDataProvider {
 
         this.ws.on('close', () => {
           this.isConnected = false;
-          this.scheduleReconnect();
+          if (!this.isClosing) {
+            this.scheduleReconnect();
+          }
         });
       } catch (err) {
         this.isConnected = false;
-        this.scheduleReconnect();
+        if (!this.isClosing) {
+          this.scheduleReconnect();
+        }
         resolve();
       }
     });
   }
 
   public async disconnect(): Promise<void> {
+    this.isClosing = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     if (this.ws) {
+      this.ws.removeAllListeners();
       this.ws.close();
       this.ws = null;
     }
@@ -89,7 +97,7 @@ export class BinanceMarketDataProvider implements MarketDataProvider {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
+    if (this.isClosing || this.reconnectTimer) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();

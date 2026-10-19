@@ -10,7 +10,9 @@ import {
   PositionSide,
   calculateRequiredMargin,
   calculateUnrealizedPnl,
+  calculateLiquidationPrice,
   validateStopLossTakeProfit,
+  WalletTransaction,
 } from '@nexus/core';
 import { BrokerProvider } from '@nexus/core';
 import { CompositeMarketDataProvider } from '../providers/market-data/composite-market-data.js';
@@ -40,6 +42,7 @@ export class OrderEngine {
   private orders: Map<string, Order> = new Map();
   private positions: Map<string, Position> = new Map();
   private trades: Trade[] = [];
+  private transactions: WalletTransaction[] = [];
 
   // Account In-Memory Balances (mapped to DB in persistence phase)
   private balances: Map<string, { total: number; locked: number; currency: string }> = new Map();
@@ -241,9 +244,11 @@ export class OrderEngine {
         price: weightedAvgPrice,
         leverage,
       });
+      existing.liquidationPrice = calculateLiquidationPrice(existing.side, weightedAvgPrice, leverage);
       existing.updatedAt = new Date().toISOString();
       this.events.onPositionUpdated?.(existing);
     } else {
+      const liquidationPrice = calculateLiquidationPrice(positionSide, fillPrice, leverage);
       const newPos: Position = {
         id: `pos_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         accountId: order.accountId,
@@ -257,6 +262,7 @@ export class OrderEngine {
         realizedPnl: 0,
         margin: order.marginLocked,
         leverage,
+        liquidationPrice,
         stopLoss: order.stopLoss,
         takeProfit: order.takeProfit,
         createdAt: new Date().toISOString(),
@@ -361,11 +367,174 @@ export class OrderEngine {
   }
 
   /**
-   * Automated SL / TP Risk Monitor
+   * Update Position Risk Levels (Stop Loss & Take Profit)
    */
+  public async updatePosition(
+    positionId: string,
+    updates: { stopLoss?: number; takeProfit?: number }
+  ): Promise<Position> {
+    let targetPos: Position | undefined;
+    for (const p of this.positions.values()) {
+      if (p.id === positionId) {
+        targetPos = p;
+        break;
+      }
+    }
+
+    if (!targetPos) {
+      throw new Error(`Position ${positionId} not found`);
+    }
+
+    if (updates.stopLoss !== undefined || updates.takeProfit !== undefined) {
+      const sl = updates.stopLoss !== undefined ? updates.stopLoss : targetPos.stopLoss;
+      const tp = updates.takeProfit !== undefined ? updates.takeProfit : targetPos.takeProfit;
+      const orderSide = targetPos.side === 'LONG' ? 'BUY' : 'SELL';
+      const val = validateStopLossTakeProfit(orderSide, targetPos.currentPrice, sl, tp);
+      if (!val.isValid) {
+        throw new Error(val.error || 'Invalid Stop Loss / Take Profit parameters');
+      }
+      targetPos.stopLoss = updates.stopLoss;
+      targetPos.takeProfit = updates.takeProfit;
+    }
+
+    targetPos.updatedAt = new Date().toISOString();
+    this.events.onPositionUpdated?.(targetPos);
+    this.events.onAuditLog?.({
+      action: 'POSITION_MODIFIED',
+      details: `Updated ${targetPos.symbol} (${targetPos.side}): SL=${targetPos.stopLoss ?? 'None'}, TP=${targetPos.takeProfit ?? 'None'}`,
+      status: 'SUCCESS',
+    });
+
+    return targetPos;
+  }
+
+  /**
+   * Wallet Deposit: Credit Settled Balance & Log Transaction
+   */
+  public deposit(accountId: string, amount: number, method: string, reference?: string): WalletTransaction {
+    if (amount <= 0) {
+      throw new Error('Deposit amount must be greater than zero');
+    }
+
+    const bal = this.balances.get(accountId) || { total: 0, locked: 0, currency: 'USD' };
+    bal.total = Number((bal.total + amount).toFixed(2));
+    this.balances.set(accountId, bal);
+
+    const txn: WalletTransaction = {
+      id: `txn_dep_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      accountId,
+      type: 'DEPOSIT',
+      amount,
+      currency: bal.currency,
+      status: 'COMPLETED',
+      method,
+      referenceId: reference || `ref_${Date.now()}`,
+      details: `Deposited $${amount.toFixed(2)} USD via ${method}`,
+      createdAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+
+    this.transactions.unshift(txn);
+    this.events.onAuditLog?.({
+      action: 'WALLET_DEPOSIT',
+      details: `Credited $${amount.toFixed(2)} USD via ${method}. Settled balance: $${bal.total.toFixed(2)} USD`,
+      status: 'SUCCESS',
+    });
+
+    return txn;
+  }
+
+  /**
+   * Wallet Withdrawal: Deduct Free Margin & Log Transaction
+   */
+  public withdraw(accountId: string, amount: number, method: string, destination: string): WalletTransaction {
+    if (amount <= 0) {
+      throw new Error('Withdrawal amount must be greater than zero');
+    }
+
+    const acc = this.getAccountBalance(accountId);
+    if (amount > acc.freeMargin) {
+      throw new Error(`Insufficient Free Margin. Maximum withdrawable: $${acc.freeMargin.toFixed(2)} USD`);
+    }
+
+    const bal = this.balances.get(accountId) || { total: 0, locked: 0, currency: 'USD' };
+    bal.total = Number((bal.total - amount).toFixed(2));
+    this.balances.set(accountId, bal);
+
+    const txn: WalletTransaction = {
+      id: `txn_wth_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      accountId,
+      type: 'WITHDRAWAL',
+      amount,
+      currency: bal.currency,
+      status: 'COMPLETED',
+      method,
+      referenceId: `dest_${destination.substring(0, 10)}`,
+      details: `Withdrew $${amount.toFixed(2)} USD to ${destination}`,
+      createdAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+
+    this.transactions.unshift(txn);
+    this.events.onAuditLog?.({
+      action: 'WALLET_WITHDRAWAL',
+      details: `Withdrew $${amount.toFixed(2)} USD to ${destination} via ${method}. Remaining balance: $${bal.total.toFixed(2)} USD`,
+      status: 'SUCCESS',
+    });
+
+    return txn;
+  }
+
+  public getTransactions(accountId = 'acc_default'): WalletTransaction[] {
+    return this.transactions.filter((t) => !accountId || t.accountId === accountId);
+  }
+
+  /**
+   * Admin Force Close All Positions (Emergency Circuit Breaker)
+   */
+  public async forceCloseAllPositions(reason = 'ADMIN_CIRCUIT_BREAKER'): Promise<number> {
+    const posList = Array.from(this.positions.values());
+    for (const pos of posList) {
+      await this.closePosition(pos.id);
+    }
+    this.events.onAuditLog?.({
+      action: 'CIRCUIT_BREAKER_TRIGGERED',
+      details: `Emergency: Force-closed all ${posList.length} open positions. Reason: ${reason}`,
+      status: 'WARNING',
+    });
+    return posList.length;
+  }
+
+  /**
+   * Admin Reset / Set Account Balance
+   */
+  public setAccountBalance(accountId: string, total: number): void {
+    const bal = this.balances.get(accountId) || { total: 0, locked: 0, currency: 'USD' };
+    bal.total = total;
+    this.balances.set(accountId, bal);
+    this.events.onAuditLog?.({
+      action: 'ADMIN_BALANCE_ADJUST',
+      details: `Account ${accountId} balance manually set to $${total.toFixed(2)} USD by administrator`,
+      status: 'WARNING',
+    });
+  }
+
+  /**
+   * Automated SL / TP Risk Monitor & Stop-Out Auto Liquidation
+   */
+  private monitorInterval?: NodeJS.Timeout;
+
+  public stop(): void {
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval);
+      this.monitorInterval = undefined;
+    }
+  }
+
   private startSlTpMonitor(): void {
-    setInterval(async () => {
-      for (const [key, pos] of this.positions.entries()) {
+    this.monitorInterval = setInterval(async () => {
+      // 1. Monitor Individual Position SL & TP Triggers
+      for (const [_key, pos] of this.positions.entries()) {
         try {
           const ticker = await this.marketData.getTicker(pos.symbol);
           const currentPrice = pos.side === 'LONG' ? ticker.bid : ticker.ask;
@@ -403,6 +572,28 @@ export class OrderEngine {
           this.events.onPositionUpdated?.(pos);
         } catch (_err) {}
       }
+
+      // 2. Account-Level Margin Stop-Out Auto Liquidation Check
+      try {
+        if (this.positions.size > 0) {
+          const acc = this.getAccountBalance('acc_default');
+          if (acc.marginLevel <= 50.0) {
+            // Margin breached Stop-Out threshold (<= 50%)!
+            const sortedPositions = Array.from(this.positions.values()).sort((a, b) => a.unrealizedPnl - b.unrealizedPnl);
+            const worstPosition = sortedPositions[0];
+            if (worstPosition) {
+              this.events.onAuditLog?.({
+                action: 'STOP_OUT_LIQUIDATION',
+                details: `CRITICAL STOP-OUT: Margin Level fell to ${acc.marginLevel.toFixed(1)}% (<= 50% limit). Auto-liquidating worst position: ${worstPosition.side} ${worstPosition.quantity} ${worstPosition.symbol} (P&L: $${worstPosition.unrealizedPnl.toFixed(2)} USD) to preserve equity.`,
+                status: 'ERROR',
+              });
+              await this.closePosition(worstPosition.id);
+            }
+          }
+        }
+      } catch (_err) {}
     }, 1000);
+
+    this.monitorInterval.unref();
   }
 }

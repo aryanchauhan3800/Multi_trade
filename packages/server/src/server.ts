@@ -8,6 +8,8 @@ import { CompositeMarketDataProvider } from './providers/market-data/composite-m
 import { MarketWebSocketGateway } from './gateway/market-ws-gateway.js';
 import { BrokerRouter } from './providers/broker/broker-router.js';
 import { OrderEngine } from './engine/order-engine.js';
+import { PaymentGateway } from './providers/payment/payment-gateway.js';
+import { AuthService } from './auth/auth-service.js';
 import { EnvironmentMode } from '@nexus/core';
 
 dotenv.config();
@@ -51,9 +53,64 @@ const orderEngine = new OrderEngine(broker, marketData, {
   },
 });
 
-// 4. Create HTTP Server & WebSocket Gateway
+// 4. Initialize Payment & Custody Gateway
+const paymentGateway = new PaymentGateway();
+
+// 5. Initialize Security & Authentication Engine
+const authService = new AuthService();
+
+// 6. Create HTTP Server & WebSocket Gateway
 const server = http.createServer(app);
 const wsGateway = new MarketWebSocketGateway(server, marketData);
+
+// -------------------------------------------------------------
+// AUTHENTICATION & IDENTITY ENDPOINTS
+// -------------------------------------------------------------
+
+// Register New Trader Account
+app.post('/api/auth/register', (req: Request, res: Response) => {
+  try {
+    const { email, password, role } = req.body;
+    const result = authService.register(email, password, role);
+    res.status(201).json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Authenticate / Login
+app.post('/api/auth/login', (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    const result = authService.login(email, password);
+    res.json(result);
+  } catch (err: any) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+// Current Authenticated Session
+app.get('/api/auth/me', (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or malformed Authorization header' });
+  }
+  const token = authHeader.substring(7);
+  const session = authService.verifyToken(token);
+  if (!session) {
+    return res.status(401).json({ error: 'Session expired or invalid' });
+  }
+  res.json({ session });
+});
+
+// Logout Session
+app.post('/api/auth/logout', (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    authService.logout(authHeader.substring(7));
+  }
+  res.json({ success: true, message: 'Logged out successfully' });
+});
 
 // -------------------------------------------------------------
 // REST API ENDPOINTS
@@ -194,6 +251,20 @@ app.delete('/api/positions/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Update Position Risk Levels (SL / TP)
+app.patch('/api/positions/:id', async (req: Request, res: Response) => {
+  try {
+    const { stopLoss, takeProfit } = req.body;
+    const position = await orderEngine.updatePosition(req.params.id, {
+      stopLoss: stopLoss !== undefined ? parseFloat(stopLoss) : undefined,
+      takeProfit: takeProfit !== undefined ? parseFloat(takeProfit) : undefined,
+    });
+    res.json({ success: true, position });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Account Financial Summary (Balance, Equity, Margin, Free Margin)
 app.get('/api/account/summary', (_req: Request, res: Response) => {
   res.json(orderEngine.getAccountBalance('acc_default'));
@@ -207,6 +278,123 @@ app.get('/api/account/trades', (_req: Request, res: Response) => {
 // Immutable Financial Audit Logs
 app.get('/api/account/audit-logs', (_req: Request, res: Response) => {
   res.json({ auditLogs });
+});
+
+// -------------------------------------------------------------
+// WALLET & FINANCIAL CUSTODY ENDPOINTS
+// -------------------------------------------------------------
+
+// Create Deposit Intent & Credit Account
+app.post('/api/wallet/deposit', async (req: Request, res: Response) => {
+  try {
+    const { amount, method } = req.body;
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ error: 'Deposit amount must be a positive number' });
+    }
+
+    const intent = await paymentGateway.createDepositIntent({
+      accountId: 'acc_default',
+      amount: numAmount,
+      currency: 'USD',
+      method: method || 'STRIPE',
+    });
+
+    // In sandbox / instant mode, credit immediately
+    if (intent.status === 'COMPLETED') {
+      const txn = orderEngine.deposit('acc_default', numAmount, method || 'STRIPE', intent.intentId);
+      return res.status(200).json({ success: true, intent, transaction: txn });
+    }
+
+    res.status(200).json({ success: true, intent });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Request Account Withdrawal
+app.post('/api/wallet/withdraw', (req: Request, res: Response) => {
+  try {
+    const { amount, method, destination } = req.body;
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ error: 'Withdrawal amount must be a positive number' });
+    }
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination account/address is required' });
+    }
+
+    const txn = orderEngine.withdraw('acc_default', numAmount, method || 'STRIPE', destination);
+    res.status(200).json({ success: true, transaction: txn });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Get Wallet Transactions
+app.get('/api/wallet/transactions', (_req: Request, res: Response) => {
+  res.json({ transactions: orderEngine.getTransactions('acc_default') });
+});
+
+// -------------------------------------------------------------
+// ADMIN & RISK MANAGEMENT ENDPOINTS
+// -------------------------------------------------------------
+
+// Admin System Overview
+app.get('/api/admin/overview', (_req: Request, res: Response) => {
+  const acc = orderEngine.getAccountBalance('acc_default');
+  const positions = orderEngine.getPositions();
+  const openOrders = orderEngine.getOpenOrders();
+
+  res.json({
+    status: 'HEALTHY',
+    environment: envMode,
+    broker: {
+      name: broker.name,
+      connected: broker.isConnected,
+    },
+    marketData: {
+      connected: marketData.isConnected,
+    },
+    metrics: {
+      totalBalance: acc.totalBalance,
+      equity: acc.equity,
+      usedMargin: acc.usedMargin,
+      freeMargin: acc.freeMargin,
+      marginLevel: acc.marginLevel,
+      openPositionsCount: positions.length,
+      openOrdersCount: openOrders.length,
+      totalVolumeNotional: positions.reduce((sum, p) => sum + p.quantity * p.currentPrice, 0),
+      totalAuditLogs: auditLogs.length,
+    },
+    activePositions: positions,
+  });
+});
+
+// Emergency Circuit Breaker: Halt & Liquidate All
+app.post('/api/admin/circuit-breaker', async (req: Request, res: Response) => {
+  try {
+    const reason = req.body.reason || 'Admin emergency halt initiated';
+    const closedCount = await orderEngine.forceCloseAllPositions(reason);
+    res.json({ success: true, closedPositionsCount: closedCount, message: `Circuit breaker activated: ${closedCount} positions closed.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Balance Override (Testing / Adjustment)
+app.post('/api/admin/adjust-balance', (req: Request, res: Response) => {
+  try {
+    const { amount, accountId = 'acc_default' } = req.body;
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount < 0) {
+      return res.status(400).json({ error: 'Valid balance amount required' });
+    }
+    orderEngine.setAccountBalance(accountId, numAmount);
+    res.json({ success: true, newBalance: numAmount });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Start Server

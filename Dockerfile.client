@@ -1,0 +1,31 @@
+# Multi-Stage Production Dockerfile for Nexus Client UI
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy root and package manifests
+COPY package.json package-lock.json ./
+COPY packages/core/package.json ./packages/core/
+COPY packages/client/package.json ./packages/client/
+
+# Install dependencies
+RUN npm ci
+
+# Copy source trees
+COPY tsconfig.base.json ./
+COPY packages/core ./packages/core
+COPY packages/client ./packages/client
+
+# Build packages
+RUN npm run build --workspace=@nexus/core
+RUN npm run build --workspace=@nexus/client
+
+# --- Production Web Server ---
+FROM nginx:alpine AS runner
+
+COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

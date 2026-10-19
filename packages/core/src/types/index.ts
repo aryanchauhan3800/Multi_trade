@@ -181,3 +181,19 @@ export interface AccountPortfolioSummary {
   openPositionsCount: number;
   openOrdersCount: number;
 }
+
+export type PaymentMethodType = 'STRIPE' | 'COINBASE' | 'BANK_WIRE' | 'CRYPTO';
+
+export interface WalletTransaction {
+  id: string;
+  accountId: string;
+  type: 'DEPOSIT' | 'WITHDRAWAL';
+  amount: number;
+  currency: string;
+  status: 'PENDING' | 'COMPLETED' | 'REJECTED';
+  method: PaymentMethodType | string;
+  referenceId: string;
+  details?: string;
+  createdAt: string;
+  completedAt?: string;
+}

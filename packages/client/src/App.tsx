@@ -22,7 +22,7 @@ import { DepositModal } from './components/modals/DepositModal.js';
 import { PortfolioModal } from './components/modals/PortfolioModal.js';
 import { AdminModal } from './components/modals/AdminModal.js';
 
-import { BarChart2, Star, TrendingUp, PieChart, User } from 'lucide-react';
+import { BarChart2, Star, TrendingUp, PieChart, User, AlertTriangle } from 'lucide-react';
 
 interface AuditItem {
   id: string;
@@ -432,6 +432,25 @@ export const App: React.FC = () => {
     }
   };
 
+  // Update Position SL/TP on Server OMS
+  const handleUpdatePosition = async (positionId: string, updates: { stopLoss?: number; takeProfit?: number }) => {
+    try {
+      const res = await fetch(`${SERVER_BASE}/api/positions/${positionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) {
+        const data = await res.json() as any;
+        alert(data.error || 'Failed to update position risk parameters');
+        return;
+      }
+      syncServerState();
+    } catch (err: any) {
+      alert(`Position update failure: ${err.message}`);
+    }
+  };
+
   const currentSelectedTicker = tickers.get(selectedSymbol);
   const currentOpenPosition = positions.find((p) => p.symbol === selectedSymbol);
 
@@ -453,6 +472,32 @@ export const App: React.FC = () => {
         onChangeEnvironment={setEnvironment}
       />
 
+      {/* Institutional Margin Call / Stop-Out Alert Banner */}
+      {marginLevel < 100 && (
+        <div
+          style={{
+            background: marginLevel <= 50 ? '#dc2626' : '#d97706',
+            color: '#ffffff',
+            padding: '6px 16px',
+            fontSize: '11px',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            letterSpacing: '0.04em',
+            zIndex: 100,
+          }}
+        >
+          <AlertTriangle size={15} />
+          <span>
+            {marginLevel <= 50
+              ? `CRITICAL STOP-OUT: Margin Level is ${marginLevel.toFixed(1)}% (<= 50.0%). Auto-liquidation of positions in progress!`
+              : `MARGIN CALL WARNING: Margin Level is ${marginLevel.toFixed(1)}% (< 100.0%). Deposit margin or reduce exposure immediately to prevent stop-out liquidation.`}
+          </span>
+        </div>
+      )}
+
       {/* Main 4-Quadrant Workspace Grid */}
       <main className="workspace-grid">
         {/* Left: Markets & Watchlist */}
@@ -469,6 +514,7 @@ export const App: React.FC = () => {
           candles={candles}
           currentPrice={currentSelectedTicker?.lastPrice || 0}
           openPosition={currentOpenPosition}
+          onUpdatePosition={handleUpdatePosition}
         />
 
         {/* Right: Order Entry & Risk Calculator */}
@@ -576,7 +622,12 @@ export const App: React.FC = () => {
       )}
 
       {/* Admin Dashboard Modal */}
-      {showAdminModal && <AdminModal onClose={() => setShowAdminModal(false)} />}
+      {showAdminModal && (
+        <AdminModal
+          onClose={() => setShowAdminModal(false)}
+          onRefreshParent={syncServerState}
+        />
+      )}
     </div>
   );
 };
