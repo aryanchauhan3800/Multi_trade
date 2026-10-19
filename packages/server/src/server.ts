@@ -1,4 +1,4 @@
-// Production Express & WebSocket Server
+// Production Express & WebSocket Server with Order Engine & Broker Integration
 
 import http from 'http';
 import express, { Request, Response } from 'express';
@@ -6,34 +6,65 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { CompositeMarketDataProvider } from './providers/market-data/composite-market-data.js';
 import { MarketWebSocketGateway } from './gateway/market-ws-gateway.js';
+import { BrokerRouter } from './providers/broker/broker-router.js';
+import { OrderEngine } from './engine/order-engine.js';
+import { EnvironmentMode } from '@nexus/core';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
+const envMode: EnvironmentMode = (process.env.ENVIRONMENT_MODE as EnvironmentMode) || 'PAPER_TRADING';
 
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// Initialize Market Data Layer
+// 1. Initialize Market Data Layer
 const marketData = new CompositeMarketDataProvider();
 marketData.connect();
 
-// Create HTTP Server
-const server = http.createServer(app);
+// 2. Initialize Broker Router Layer
+const broker = new BrokerRouter(marketData, envMode);
+broker.initialize();
 
-// Initialize WebSocket Gateway
+// In-Memory Audit Logs storage
+const auditLogs: Array<{ id: string; time: string; action: string; details: string; status: 'SUCCESS' | 'WARNING' | 'ERROR' }> = [
+  {
+    id: `aud_boot_${Date.now()}`,
+    time: new Date().toLocaleTimeString(),
+    action: 'SERVER_BOOT',
+    details: `Nexus Trading Platform started in ${envMode} mode. Broker: ${broker.name}.`,
+    status: 'SUCCESS',
+  },
+];
+
+// 3. Initialize Order Engine (OMS)
+const orderEngine = new OrderEngine(broker, marketData, {
+  onAuditLog: (log) => {
+    auditLogs.unshift({
+      id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+      time: new Date().toLocaleTimeString(),
+      action: log.action,
+      details: log.details,
+      status: log.status,
+    });
+  },
+});
+
+// 4. Create HTTP Server & WebSocket Gateway
+const server = http.createServer(app);
 const wsGateway = new MarketWebSocketGateway(server, marketData);
 
 // -------------------------------------------------------------
 // REST API ENDPOINTS
 // -------------------------------------------------------------
 
-// Health Probe
+// System Health Probe
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ONLINE',
-    environment: process.env.ENVIRONMENT_MODE || 'PAPER_TRADING',
+    environment: envMode,
+    brokerConnected: broker.isConnected,
     marketDataConnected: marketData.isConnected,
     timestamp: Date.now(),
   });
@@ -94,10 +125,94 @@ app.get('/api/markets/candles/:symbol', async (req: Request, res: Response) => {
   }
 });
 
+// -------------------------------------------------------------
+// ORDER MANAGEMENT (OMS) & TRADING ENDPOINTS
+// -------------------------------------------------------------
+
+// Submit Order (Risk Checked & Broker Dispatched)
+app.post('/api/orders', async (req: Request, res: Response) => {
+  try {
+    const { symbol, side, type, quantity, price, stopLoss, takeProfit } = req.body;
+
+    const order = await orderEngine.submitOrder({
+      accountId: 'acc_default',
+      userId: 'usr_default',
+      symbol: symbol.toUpperCase(),
+      side,
+      type,
+      quantity: parseFloat(quantity),
+      price: price ? parseFloat(price) : undefined,
+      stopLoss: stopLoss ? parseFloat(stopLoss) : undefined,
+      takeProfit: takeProfit ? parseFloat(takeProfit) : undefined,
+    });
+
+    res.status(201).json({ order });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Order rejected by risk engine' });
+  }
+});
+
+// Cancel Working Order
+app.delete('/api/orders/:id', async (req: Request, res: Response) => {
+  try {
+    const success = await orderEngine.cancelOrder(req.params.id);
+    if (!success) {
+      return res.status(404).json({ error: 'Order not found or already terminal' });
+    }
+    res.json({ success: true, message: 'Order successfully cancelled' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get Open / Working Orders
+app.get('/api/orders/open', (_req: Request, res: Response) => {
+  res.json({ orders: orderEngine.getOpenOrders() });
+});
+
+// Get Order History
+app.get('/api/orders/history', (_req: Request, res: Response) => {
+  res.json({ orders: orderEngine.getOrderHistory() });
+});
+
+// -------------------------------------------------------------
+// POSITIONS & ACCOUNT ENDPOINTS
+// -------------------------------------------------------------
+
+// Get Active Positions
+app.get('/api/positions', (_req: Request, res: Response) => {
+  res.json({ positions: orderEngine.getPositions() });
+});
+
+// Close Position at Market Price
+app.delete('/api/positions/:id', async (req: Request, res: Response) => {
+  try {
+    await orderEngine.closePosition(req.params.id);
+    res.json({ success: true, message: 'Position closed at market price' });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Account Financial Summary (Balance, Equity, Margin, Free Margin)
+app.get('/api/account/summary', (_req: Request, res: Response) => {
+  res.json(orderEngine.getAccountBalance('acc_default'));
+});
+
+// Trade Execution History
+app.get('/api/account/trades', (_req: Request, res: Response) => {
+  res.json({ trades: orderEngine.getTrades() });
+});
+
+// Immutable Financial Audit Logs
+app.get('/api/account/audit-logs', (_req: Request, res: Response) => {
+  res.json({ auditLogs });
+});
+
 // Start Server
 server.listen(port, () => {
   console.log(`[NEXUS SERVER] Running on http://localhost:${port}`);
   console.log(`[NEXUS SERVER] WebSocket Gateway available at ws://localhost:${port}/ws/market`);
 });
 
-export { server, app, marketData, wsGateway };
+export { server, app, marketData, broker, orderEngine, wsGateway };

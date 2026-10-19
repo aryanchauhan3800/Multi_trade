@@ -58,15 +58,7 @@ export const App: React.FC = () => {
   const [positions, setPositions] = useState<Position[]>([]);
   const [openOrders, setOpenOrders] = useState<Order[]>([]);
   const [tradeHistory, setTradeHistory] = useState<Trade[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditItem[]>([
-    {
-      id: 'aud_init_1',
-      time: new Date().toLocaleTimeString(),
-      action: 'SYSTEM_BOOT',
-      details: 'Connected to Nexus Real-Time Market Data Engine. Upstream: Binance Official WebSocket + Simulated FX.',
-      status: 'SUCCESS',
-    },
-  ]);
+  const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
 
   // Modals State
   const [pendingConfirmationOrder, setPendingConfirmationOrder] = useState<any | null>(null);
@@ -113,8 +105,64 @@ export const App: React.FC = () => {
   // WebSocket Connection Ref
   const wsRef = useRef<WebSocket | null>(null);
 
-  // 1. Fetch Initial Tickers Snapshot from Server
+  // Sync state from server OMS
+  const syncServerState = useCallback(() => {
+    // 1. Account Summary
+    fetch(`${SERVER_BASE}/api/account/summary`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((acc) => {
+        if (acc && typeof acc.totalBalance === 'number') {
+          setBalance(acc.totalBalance);
+        }
+      })
+      .catch(() => {});
+
+    // 2. Positions
+    fetch(`${SERVER_BASE}/api/positions`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.positions) {
+          setPositions(data.positions);
+        }
+      })
+      .catch(() => {});
+
+    // 3. Open Orders
+    fetch(`${SERVER_BASE}/api/orders/open`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.orders) {
+          setOpenOrders(data.orders);
+        }
+      })
+      .catch(() => {});
+
+    // 4. Trade History
+    fetch(`${SERVER_BASE}/api/account/trades`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.trades) {
+          setTradeHistory(data.trades);
+        }
+      })
+      .catch(() => {});
+
+    // 5. Audit Logs
+    fetch(`${SERVER_BASE}/api/account/audit-logs`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.auditLogs) {
+          setAuditLogs(data.auditLogs);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Initial Sync on Mount
   useEffect(() => {
+    syncServerState();
+
+    // Fetch initial tickers
     fetch(`${SERVER_BASE}/api/markets/tickers`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -127,9 +175,9 @@ export const App: React.FC = () => {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [syncServerState]);
 
-  // 2. Fetch Candlesticks when Selected Symbol Changes
+  // Fetch Candlesticks when Selected Symbol Changes
   useEffect(() => {
     fetch(`${SERVER_BASE}/api/markets/candles/${selectedSymbol}?timeframe=15m&limit=60`)
       .then((res) => (res.ok ? res.json() : null))
@@ -137,7 +185,6 @@ export const App: React.FC = () => {
         if (data && data.candles && data.candles.length > 0) {
           setCandles(data.candles);
         } else {
-          // Fallback synthetic generator if server returned empty
           generateSyntheticCandles(selectedSymbol);
         }
       })
@@ -178,7 +225,7 @@ export const App: React.FC = () => {
     setCandles(generated);
   };
 
-  // 3. Connect to Real-Time WebSocket Gateway
+  // Connect to Real-Time WebSocket Gateway
   useEffect(() => {
     let reconnectTimeout: NodeJS.Timeout;
 
@@ -188,7 +235,6 @@ export const App: React.FC = () => {
         wsRef.current = ws;
 
         ws.onopen = () => {
-          // Subscribe to all tickers and active symbol feeds
           const allSymbols = Array.from(tickers.keys());
           const channels = [
             ...allSymbols.map((s) => `ticker:${s}`),
@@ -308,7 +354,7 @@ export const App: React.FC = () => {
   // Order Submission Pipeline
   const handleOrderRequest = (orderParams: any) => {
     if (oneClickMode) {
-      executeOrder(orderParams);
+      executeOrderOnServer(orderParams);
     } else {
       setPendingConfirmationOrder(orderParams);
     }
@@ -317,144 +363,73 @@ export const App: React.FC = () => {
   const handleConfirmOrder = (enableOneClick: boolean) => {
     if (!pendingConfirmationOrder) return;
     if (enableOneClick) setOneClickMode(true);
-    executeOrder(pendingConfirmationOrder);
+    executeOrderOnServer(pendingConfirmationOrder);
     setPendingConfirmationOrder(null);
   };
 
-  const executeOrder = (orderParams: any) => {
-    const ticker = tickers.get(orderParams.symbol);
-    const executionPrice = orderParams.price || (orderParams.side === 'BUY' ? ticker?.ask : ticker?.bid) || 1;
-    const internalId = `ord_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  // Execute Order via Authenticated Server OMS
+  const executeOrderOnServer = async (orderParams: any) => {
+    try {
+      const res = await fetch(`${SERVER_BASE}/api/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: orderParams.symbol,
+          side: orderParams.side,
+          type: orderParams.type,
+          quantity: orderParams.quantity,
+          price: orderParams.price,
+          stopLoss: orderParams.stopLoss,
+          takeProfit: orderParams.takeProfit,
+        }),
+      });
 
-    // Add Audit Log Entry
-    const newLog: AuditItem = {
-      id: `aud_${Date.now()}`,
-      time: new Date().toLocaleTimeString(),
-      action: 'ORDER_EXECUTION',
-      details: `${orderParams.side} ${orderParams.quantity} ${orderParams.symbol} @ $${executionPrice.toFixed(2)}. Margin: $${orderParams.requiredMargin.toFixed(2)}`,
-      status: 'SUCCESS',
-    };
-    setAuditLogs((prev) => [newLog, ...prev]);
+      const data = await res.json() as any;
 
-    // If Market Order -> Fill immediately and create Position
-    if (orderParams.type === 'MARKET') {
-      const positionSide = orderParams.side === 'BUY' ? 'LONG' : 'SHORT';
-      const newPos: Position = {
-        id: `pos_${Date.now()}`,
-        accountId: 'acc_default',
-        instrumentId: `inst_${orderParams.symbol}`,
-        symbol: orderParams.symbol,
-        side: positionSide,
-        quantity: orderParams.quantity,
-        entryPrice: executionPrice,
-        currentPrice: executionPrice,
-        unrealizedPnl: 0,
-        realizedPnl: 0,
-        margin: orderParams.requiredMargin,
-        leverage,
-        stopLoss: orderParams.stopLoss,
-        takeProfit: orderParams.takeProfit,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      if (!res.ok) {
+        alert(data.error || 'Order rejected by risk engine');
+        return;
+      }
 
-      setPositions((prev) => [newPos, ...prev]);
-
-      // Add to Trade History
-      const newTrade: Trade = {
-        id: `trd_${Date.now()}`,
-        orderId: internalId,
-        accountId: 'acc_default',
-        instrumentId: `inst_${orderParams.symbol}`,
-        symbol: orderParams.symbol,
-        side: orderParams.side,
-        price: executionPrice,
-        quantity: orderParams.quantity,
-        fee: orderParams.estimatedFee,
-        feeCurrency: 'USD',
-        realizedPnl: 0,
-        executedAt: new Date().toLocaleTimeString(),
-      };
-      setTradeHistory((prev) => [newTrade, ...prev]);
-    } else {
-      // Limit or Stop Order -> Add to Open Orders
-      const newOrder: Order = {
-        id: internalId,
-        accountId: 'acc_default',
-        instrumentId: `inst_${orderParams.symbol}`,
-        symbol: orderParams.symbol,
-        clientOrderId: internalId,
-        side: orderParams.side,
-        type: orderParams.type,
-        quantity: orderParams.quantity,
-        price: orderParams.price,
-        stopLoss: orderParams.stopLoss,
-        takeProfit: orderParams.takeProfit,
-        filledQuantity: 0,
-        fee: orderParams.estimatedFee,
-        feeCurrency: 'USD',
-        marginLocked: orderParams.requiredMargin,
-        status: 'OPEN',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setOpenOrders((prev) => [newOrder, ...prev]);
+      // Sync updated positions, orders, balances from server
+      syncServerState();
+    } catch (err: any) {
+      alert(`Server connection failure: ${err.message}`);
     }
   };
 
-  // Close Position
-  const handleClosePosition = (positionId: string) => {
-    const pos = positions.find((p) => p.id === positionId);
-    if (!pos) return;
-
-    // Realize P&L
-    setBalance((prev) => prev + pos.unrealizedPnl);
-
-    // Record Closing Trade
-    const closingTrade: Trade = {
-      id: `trd_close_${Date.now()}`,
-      orderId: `ord_close_${Date.now()}`,
-      accountId: 'acc_default',
-      instrumentId: pos.instrumentId,
-      symbol: pos.symbol,
-      side: pos.side === 'LONG' ? 'SELL' : 'BUY',
-      price: pos.currentPrice,
-      quantity: pos.quantity,
-      fee: Number((pos.quantity * pos.currentPrice * 0.0005).toFixed(2)),
-      feeCurrency: 'USD',
-      realizedPnl: pos.unrealizedPnl,
-      executedAt: new Date().toLocaleTimeString(),
-    };
-
-    setTradeHistory((prev) => [closingTrade, ...prev]);
-    setPositions((prev) => prev.filter((p) => p.id !== positionId));
-
-    // Audit Log
-    setAuditLogs((prev) => [
-      {
-        id: `aud_${Date.now()}`,
-        time: new Date().toLocaleTimeString(),
-        action: 'POSITION_CLOSED',
-        details: `Closed ${pos.side} ${pos.quantity} ${pos.symbol} @ $${pos.currentPrice.toFixed(2)}. Realized P&L: ${pos.unrealizedPnl >= 0 ? '+' : ''}$${pos.unrealizedPnl.toFixed(2)}`,
-        status: 'SUCCESS',
-      },
-      ...prev,
-    ]);
+  // Close Position via Server OMS
+  const handleClosePosition = async (positionId: string) => {
+    try {
+      const res = await fetch(`${SERVER_BASE}/api/positions/${positionId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json() as any;
+        alert(data.error || 'Failed to close position');
+        return;
+      }
+      syncServerState();
+    } catch (err: any) {
+      alert(`Server communication error: ${err.message}`);
+    }
   };
 
-  // Cancel Working Order
-  const handleCancelOrder = (orderId: string) => {
-    setOpenOrders((prev) => prev.filter((o) => o.id !== orderId));
-    setAuditLogs((prev) => [
-      {
-        id: `aud_${Date.now()}`,
-        time: new Date().toLocaleTimeString(),
-        action: 'ORDER_CANCELLED',
-        details: `Cancelled pending order ${orderId}`,
-        status: 'SUCCESS',
-      },
-      ...prev,
-    ]);
+  // Cancel Working Order via Server OMS
+  const handleCancelOrder = async (orderId: string) => {
+    try {
+      const res = await fetch(`${SERVER_BASE}/api/orders/${orderId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json() as any;
+        alert(data.error || 'Failed to cancel order');
+        return;
+      }
+      syncServerState();
+    } catch (err: any) {
+      alert(`Server communication error: ${err.message}`);
+    }
   };
 
   const currentSelectedTicker = tickers.get(selectedSymbol);
@@ -578,29 +553,11 @@ export const App: React.FC = () => {
           onClose={() => setShowDepositModal(false)}
           onDepositSuccess={(amt, method) => {
             setBalance((prev) => prev + amt);
-            setAuditLogs((prev) => [
-              {
-                id: `aud_${Date.now()}`,
-                time: new Date().toLocaleTimeString(),
-                action: 'DEPOSIT_PROCESSED',
-                details: `Deposited $${amt.toFixed(2)} USD via ${method}`,
-                status: 'SUCCESS',
-              },
-              ...prev,
-            ]);
+            syncServerState();
           }}
           onWithdrawSuccess={(amt, method) => {
             setBalance((prev) => prev - amt);
-            setAuditLogs((prev) => [
-              {
-                id: `aud_${Date.now()}`,
-                time: new Date().toLocaleTimeString(),
-                action: 'WITHDRAWAL_REQUESTED',
-                details: `Requested withdrawal of $${amt.toFixed(2)} USD via ${method}`,
-                status: 'SUCCESS',
-              },
-              ...prev,
-            ]);
+            syncServerState();
           }}
         />
       )}
