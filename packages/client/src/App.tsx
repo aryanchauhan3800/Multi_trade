@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   EnvironmentMode,
   UserRole,
@@ -32,13 +32,16 @@ interface AuditItem {
   status: 'SUCCESS' | 'WARNING' | 'ERROR';
 }
 
+const SERVER_BASE = 'http://localhost:4000';
+const WS_BASE = 'ws://localhost:4000/ws/market';
+
 export const App: React.FC = () => {
   // Theme State
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   // Environment & Role State
   const [environment, setEnvironment] = useState<EnvironmentMode>('PAPER_TRADING');
-  const [userRole, setUserRole] = useState<UserRole>('ADMIN'); // Default ADMIN so console is visible
+  const [userRole, setUserRole] = useState<UserRole>('ADMIN');
 
   // Mobile View State
   const [mobileTab, setMobileTab] = useState<'markets' | 'watchlist' | 'trade' | 'portfolio' | 'account'>('trade');
@@ -60,7 +63,7 @@ export const App: React.FC = () => {
       id: 'aud_init_1',
       time: new Date().toLocaleTimeString(),
       action: 'SYSTEM_BOOT',
-      details: 'Initialized Nexus Trading Engine in PAPER_TRADING mode. Leverage: 1:100.',
+      details: 'Connected to Nexus Real-Time Market Data Engine. Upstream: Binance Official WebSocket + Simulated FX.',
       status: 'SUCCESS',
     },
   ]);
@@ -105,13 +108,46 @@ export const App: React.FC = () => {
   });
 
   const [flashingSymbols, setFlashingSymbols] = useState<Map<string, 'up' | 'down'>>(new Map());
-
-  // Candles for Selected Symbol
   const [candles, setCandles] = useState<CandleData[]>([]);
 
-  // Generate initial candles when symbol changes
+  // WebSocket Connection Ref
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // 1. Fetch Initial Tickers Snapshot from Server
   useEffect(() => {
-    const ticker = tickers.get(selectedSymbol);
+    fetch(`${SERVER_BASE}/api/markets/tickers`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.tickers) {
+          setTickers((prev) => {
+            const next = new Map(prev);
+            data.tickers.forEach((t: TickerData) => next.set(t.symbol, t));
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // 2. Fetch Candlesticks when Selected Symbol Changes
+  useEffect(() => {
+    fetch(`${SERVER_BASE}/api/markets/candles/${selectedSymbol}?timeframe=15m&limit=60`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.candles && data.candles.length > 0) {
+          setCandles(data.candles);
+        } else {
+          // Fallback synthetic generator if server returned empty
+          generateSyntheticCandles(selectedSymbol);
+        }
+      })
+      .catch(() => {
+        generateSyntheticCandles(selectedSymbol);
+      });
+  }, [selectedSymbol]);
+
+  const generateSyntheticCandles = (sym: string) => {
+    const ticker = tickers.get(sym);
     if (!ticker) return;
 
     const basePrice = ticker.lastPrice;
@@ -140,46 +176,84 @@ export const App: React.FC = () => {
       current = close;
     }
     setCandles(generated);
-  }, [selectedSymbol]);
+  };
 
-  // Real-Time Price Tick Simulator
+  // 3. Connect to Real-Time WebSocket Gateway
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTickers((prev) => {
-        const next = new Map(prev);
-        const newFlashes = new Map<string, 'up' | 'down'>();
+    let reconnectTimeout: NodeJS.Timeout;
 
-        for (const [sym, ticker] of next.entries()) {
-          // 40% chance of ticking on each cycle
-          if (Math.random() < 0.4) {
-            const isUp = Math.random() > 0.49;
-            const deltaPct = (isUp ? 1 : -1) * (Math.random() * 0.0006);
-            const newPrice = Number((ticker.lastPrice * (1 + deltaPct)).toFixed(5));
-            const halfSpread = ticker.spread / 2;
+    const connectWs = () => {
+      try {
+        const ws = new WebSocket(WS_BASE);
+        wsRef.current = ws;
 
-            newFlashes.set(sym, isUp ? 'up' : 'down');
+        ws.onopen = () => {
+          // Subscribe to all tickers and active symbol feeds
+          const allSymbols = Array.from(tickers.keys());
+          const channels = [
+            ...allSymbols.map((s) => `ticker:${s}`),
+            `orderbook:${selectedSymbol}`,
+            `trades:${selectedSymbol}`,
+          ];
 
-            next.set(sym, {
-              ...ticker,
-              lastPrice: newPrice,
-              bid: Number((newPrice - halfSpread).toFixed(5)),
-              ask: Number((newPrice + halfSpread).toFixed(5)),
-              timestamp: Date.now(),
-            });
-          }
-        }
+          ws.send(
+            JSON.stringify({
+              action: 'subscribe',
+              channels,
+            })
+          );
+        };
 
-        if (newFlashes.size > 0) {
-          setFlashingSymbols(newFlashes);
-          setTimeout(() => setFlashingSymbols(new Map()), 700);
-        }
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
 
-        return next;
-      });
-    }, 750);
+            if (msg.event === 'ticker.update' && msg.data) {
+              const ticker: TickerData = msg.data;
+              setTickers((prev) => {
+                const next = new Map(prev);
+                const old = next.get(ticker.symbol);
+                if (old) {
+                  const isUp = ticker.lastPrice >= old.lastPrice;
+                  setFlashingSymbols((f) => {
+                    const nf = new Map(f);
+                    nf.set(ticker.symbol, isUp ? 'up' : 'down');
+                    return nf;
+                  });
+                  setTimeout(() => {
+                    setFlashingSymbols((f) => {
+                      const nf = new Map(f);
+                      nf.delete(ticker.symbol);
+                      return nf;
+                    });
+                  }, 650);
+                }
+                next.set(ticker.symbol, ticker);
+                return next;
+              });
+            }
+          } catch (_err) {}
+        };
 
-    return () => clearInterval(interval);
-  }, []);
+        ws.onclose = () => {
+          reconnectTimeout = setTimeout(connectWs, 3000);
+        };
+
+        ws.onerror = () => {
+          ws.close();
+        };
+      } catch (_err) {
+        reconnectTimeout = setTimeout(connectWs, 3000);
+      }
+    };
+
+    connectWs();
+
+    return () => {
+      clearTimeout(reconnectTimeout);
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, [selectedSymbol]);
 
   // Update Open Positions P&L continuously on ticker changes
   useEffect(() => {
