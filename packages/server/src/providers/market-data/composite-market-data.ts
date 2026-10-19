@@ -18,7 +18,19 @@ export class CompositeMarketDataProvider implements MarketDataProvider {
   private mock: MockMarketDataProvider;
 
   // Crypto symbols routed to Binance
-  private cryptoSymbols = new Set(['BTCUSD', 'ETHUSD', 'SOLUSD', 'BNBUSD']);
+  private cryptoSymbols = new Set([
+    'BTCUSD',
+    'ETHUSD',
+    'SOLUSD',
+    'BNBUSD',
+    'XRPUSD',
+    'DOGEUSD',
+    'ADAUSD',
+    'AVAXUSD',
+    'LINKUSD',
+    'DOTUSD',
+    'NEARUSD',
+  ]);
 
   constructor() {
     this.binance = new BinanceMarketDataProvider();

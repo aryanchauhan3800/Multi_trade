@@ -32,6 +32,13 @@ export class BinanceMarketDataProvider implements MarketDataProvider {
     ETHUSD: 'ethusdt',
     SOLUSD: 'solusdt',
     BNBUSD: 'bnbusdt',
+    XRPUSD: 'xrpusdt',
+    DOGEUSD: 'dogeusdt',
+    ADAUSD: 'adausdt',
+    AVAXUSD: 'avaxusdt',
+    LINKUSD: 'linkusdt',
+    DOTUSD: 'dotusdt',
+    NEARUSD: 'nearusdt',
   };
 
   private reverseMapping: Record<string, string> = {
@@ -39,6 +46,13 @@ export class BinanceMarketDataProvider implements MarketDataProvider {
     ETHUSDT: 'ETHUSD',
     SOLUSDT: 'SOLUSD',
     BNBUSDT: 'BNBUSD',
+    XRPUSDT: 'XRPUSD',
+    DOGEUSDT: 'DOGEUSD',
+    ADAUSDT: 'ADAUSD',
+    AVAXUSDT: 'AVAXUSD',
+    LINKUSDT: 'LINKUSD',
+    DOTUSDT: 'DOTUSD',
+    NEARUSDT: 'NEARUSD',
   };
 
   public async connect(): Promise<void> {

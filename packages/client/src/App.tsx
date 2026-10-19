@@ -14,7 +14,7 @@ import {
 
 import { TopNav } from './components/navigation/TopNav.js';
 import { WatchlistPanel } from './components/watchlist/WatchlistPanel.js';
-import { TradingChart } from './components/chart/TradingChart.js';
+import { TradingChart, Timeframe } from './components/chart/TradingChart.js';
 import { OrderEntryPanel } from './components/order/OrderEntryPanel.js';
 import { BottomDock } from './components/dock/BottomDock.js';
 import { OrderConfirmModal } from './components/order/OrderConfirmModal.js';
@@ -66,41 +66,11 @@ export const App: React.FC = () => {
   const [showPortfolioModal, setShowPortfolioModal] = useState<boolean>(false);
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
 
-  // Real-Time Market Data Tickers
-  const [tickers, setTickers] = useState<Map<string, TickerData>>(() => {
-    const map = new Map<string, TickerData>();
-    const initial = [
-      { symbol: 'BTCUSD', price: 94820.5, spread: 0.6, change: 1.45 },
-      { symbol: 'ETHUSD', price: 3420.2, spread: 0.15, change: -0.32 },
-      { symbol: 'EURUSD', price: 1.0842, spread: 0.0001, change: 0.21 },
-      { symbol: 'GBPUSD', price: 1.2985, spread: 0.00015, change: 0.44 },
-      { symbol: 'USDJPY', price: 154.6, spread: 0.015, change: -0.18 },
-      { symbol: 'XAUUSD', price: 2714.5, spread: 0.25, change: 0.85 },
-      { symbol: 'WTI', price: 78.4, spread: 0.03, change: -1.15 },
-      { symbol: 'AAPL', price: 232.1, spread: 0.04, change: 1.12 },
-      { symbol: 'NVDA', price: 141.5, spread: 0.05, change: 2.84 },
-      { symbol: 'SPX', price: 5860.2, spread: 0.5, change: 0.65 },
-    ];
-    for (const item of initial) {
-      const half = item.spread / 2;
-      map.set(item.symbol, {
-        symbol: item.symbol,
-        lastPrice: item.price,
-        bid: Number((item.price - half).toFixed(5)),
-        ask: Number((item.price + half).toFixed(5)),
-        spread: item.spread,
-        volume24h: 15420.5,
-        high24h: item.price * 1.02,
-        low24h: item.price * 0.98,
-        change24h: item.change,
-        timestamp: Date.now(),
-      });
-    }
-    return map;
-  });
-
+  // Real-Time Market Data Tickers (100% Live Streamed, No Static Prices)
+  const [tickers, setTickers] = useState<Map<string, TickerData>>(new Map());
   const [flashingSymbols, setFlashingSymbols] = useState<Map<string, 'up' | 'down'>>(new Map());
   const [candles, setCandles] = useState<CandleData[]>([]);
+  const [timeframe, setTimeframe] = useState<Timeframe>('15m');
 
   // WebSocket Connection Ref
   const wsRef = useRef<WebSocket | null>(null);
@@ -177,53 +147,17 @@ export const App: React.FC = () => {
       .catch(() => {});
   }, [syncServerState]);
 
-  // Fetch Candlesticks when Selected Symbol Changes
+  // Fetch 100% Real-Time Candlesticks when Symbol or Timeframe changes
   useEffect(() => {
-    fetch(`${SERVER_BASE}/api/markets/candles/${selectedSymbol}?timeframe=15m&limit=60`)
+    fetch(`${SERVER_BASE}/api/markets/candles/${selectedSymbol}?timeframe=${timeframe}&limit=80`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.candles && data.candles.length > 0) {
           setCandles(data.candles);
-        } else {
-          generateSyntheticCandles(selectedSymbol);
         }
       })
-      .catch(() => {
-        generateSyntheticCandles(selectedSymbol);
-      });
-  }, [selectedSymbol]);
-
-  const generateSyntheticCandles = (sym: string) => {
-    const ticker = tickers.get(sym);
-    if (!ticker) return;
-
-    const basePrice = ticker.lastPrice;
-    const generated: CandleData[] = [];
-    let current = basePrice * 0.97;
-    const now = Date.now();
-    const count = 50;
-
-    for (let i = count; i >= 0; i--) {
-      const time = now - i * 15 * 60 * 1000;
-      const change = (Math.random() - 0.49) * (basePrice * 0.003);
-      const open = current;
-      const close = open + change;
-      const high = Math.max(open, close) + Math.random() * (basePrice * 0.001);
-      const low = Math.min(open, close) - Math.random() * (basePrice * 0.001);
-      const volume = Math.random() * 20 + 2;
-
-      generated.push({
-        timestamp: time,
-        open: Number(open.toFixed(basePrice > 500 ? 2 : 5)),
-        high: Number(high.toFixed(basePrice > 500 ? 2 : 5)),
-        low: Number(low.toFixed(basePrice > 500 ? 2 : 5)),
-        close: Number(close.toFixed(basePrice > 500 ? 2 : 5)),
-        volume: Number(volume.toFixed(2)),
-      });
-      current = close;
-    }
-    setCandles(generated);
-  };
+      .catch(() => {});
+  }, [selectedSymbol, timeframe]);
 
   // Connect to Real-Time WebSocket Gateway
   useEffect(() => {
@@ -234,10 +168,21 @@ export const App: React.FC = () => {
         const ws = new WebSocket(WS_BASE);
         wsRef.current = ws;
 
-        ws.onopen = () => {
-          const allSymbols = Array.from(tickers.keys());
+        ws.onopen = async () => {
+          let symbols = Array.from(tickers.keys());
+          if (symbols.length === 0) {
+            try {
+              const res = await fetch(`${SERVER_BASE}/api/instruments`);
+              const data = await res.json() as any;
+              if (data && data.symbols) symbols = data.symbols;
+            } catch (_err) {}
+          }
+          if (symbols.length === 0) {
+            symbols = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'BNBUSD', 'XRPUSD', 'DOGEUSD', 'EURUSD', 'GBPUSD', 'XAUUSD', 'WTI', 'AAPL', 'NVDA', 'SPX'];
+          }
+
           const channels = [
-            ...allSymbols.map((s) => `ticker:${s}`),
+            ...symbols.map((s) => `ticker:${s}`),
             `orderbook:${selectedSymbol}`,
             `trades:${selectedSymbol}`,
           ];
@@ -277,6 +222,23 @@ export const App: React.FC = () => {
                 next.set(ticker.symbol, ticker);
                 return next;
               });
+
+              // Real-time live candle tick progression on active chart
+              if (ticker.symbol === selectedSymbol) {
+                setCandles((prev) => {
+                  if (!prev || prev.length === 0) return prev;
+                  const lastIdx = prev.length - 1;
+                  const lastCandle = prev[lastIdx];
+                  const updatedCandle: CandleData = {
+                    ...lastCandle,
+                    close: ticker.lastPrice,
+                    high: Math.max(lastCandle.high, ticker.lastPrice),
+                    low: Math.min(lastCandle.low, ticker.lastPrice),
+                    volume: Number((lastCandle.volume + 0.02).toFixed(4)),
+                  };
+                  return [...prev.slice(0, lastIdx), updatedCandle];
+                });
+              }
             }
           } catch (_err) {}
         };
@@ -514,6 +476,8 @@ export const App: React.FC = () => {
           candles={candles}
           currentPrice={currentSelectedTicker?.lastPrice || 0}
           openPosition={currentOpenPosition}
+          timeframe={timeframe}
+          onChangeTimeframe={setTimeframe}
           onUpdatePosition={handleUpdatePosition}
         />
 

@@ -16,6 +16,8 @@ interface TradingChartProps {
   currentPrice: number;
   openPosition?: Position;
   pendingOrder?: Order;
+  timeframe?: Timeframe;
+  onChangeTimeframe?: (tf: Timeframe) => void;
   onUpdateSlTp?: (sl?: number, tp?: number) => void;
   onUpdatePosition?: (positionId: string, updates: { stopLoss?: number; takeProfit?: number }) => void;
 }
@@ -29,6 +31,8 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   currentPrice,
   openPosition,
   pendingOrder,
+  timeframe: externalTimeframe,
+  onChangeTimeframe,
   onUpdateSlTp,
   onUpdatePosition,
 }) => {
@@ -36,7 +40,8 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [chartType, setChartType] = useState<ChartType>('candlestick');
-  const [timeframe, setTimeframe] = useState<Timeframe>('15m');
+  const [internalTimeframe, setInternalTimeframe] = useState<Timeframe>('15m');
+  const activeTimeframe = externalTimeframe || internalTimeframe;
   const [showMa, setShowMa] = useState<boolean>(true);
   const [showBands, setShowBands] = useState<boolean>(false);
   const [showVolume, setShowVolume] = useState<boolean>(true);
@@ -537,8 +542,11 @@ export const TradingChart: React.FC<TradingChartProps> = ({
           {(['1m', '5m', '15m', '1H', '4H', '1D'] as Timeframe[]).map((tf) => (
             <button
               key={tf}
-              className={`timeframe-pill ${timeframe === tf ? 'active' : ''}`}
-              onClick={() => setTimeframe(tf)}
+              className={`timeframe-pill ${activeTimeframe === tf ? 'active' : ''}`}
+              onClick={() => {
+                setInternalTimeframe(tf);
+                onChangeTimeframe?.(tf);
+              }}
             >
               {tf}
             </button>
