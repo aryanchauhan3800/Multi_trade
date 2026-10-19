@@ -1,0 +1,20 @@
+{
+  "name": "nexus-exchange",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-grade original multi-asset trading and exchange platform",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:server": "npm run dev --workspace=@nexus/server",
+    "dev:client": "npm run dev --workspace=@nexus/client",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

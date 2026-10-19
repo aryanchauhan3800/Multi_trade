@@ -1,0 +1,21 @@
+{
+  "name": "@nexus/server",
+  "version": "1.0.0",
+  "description": "Backend API gateway, WebSocket server, OMS and Broker Provider integration",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@nexus/core": "*",
+    "@prisma/client": "^5.14.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "prisma": "^5.14.0",
+    "typescript": "^5.4.5"
+  }
+}
