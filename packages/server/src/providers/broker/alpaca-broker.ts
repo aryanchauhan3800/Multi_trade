@@ -1,4 +1,5 @@
 // Alpaca Markets Official Trading API v2 Broker Provider
+// Executes REAL stock and crypto orders directly against the Alpaca matching engine.
 
 import {
   BrokerProvider,
@@ -11,7 +12,7 @@ import {
 
 export class AlpacaBrokerProvider implements BrokerProvider {
   public readonly name = 'AlpacaBrokerProvider';
-  public readonly environment: EnvironmentMode;
+  public environment: EnvironmentMode;
   public isConnected = false;
 
   private apiKey: string;
@@ -31,9 +32,16 @@ export class AlpacaBrokerProvider implements BrokerProvider {
     }
   }
 
-  public async initialize(credentials?: Record<string, string>): Promise<void> {
+  public async initialize(credentials?: { apiKey?: string; apiSecret?: string; environment?: EnvironmentMode }): Promise<void> {
     if (credentials?.apiKey) this.apiKey = credentials.apiKey;
     if (credentials?.apiSecret) this.apiSecret = credentials.apiSecret;
+    if (credentials?.environment) {
+      this.environment = credentials.environment;
+      this.baseUrl =
+        credentials.environment === 'LIVE'
+          ? process.env.ALPACA_LIVE_URL || 'https://api.alpaca.markets/v2'
+          : process.env.ALPACA_PAPER_URL || 'https://paper-api.alpaca.markets/v2';
+    }
 
     this.isConnected = await this.testConnection();
   }
@@ -56,6 +64,19 @@ export class AlpacaBrokerProvider implements BrokerProvider {
     }
   }
 
+  public async getAccountInfo(): Promise<any> {
+    if (!this.apiKey || !this.apiSecret) return null;
+    try {
+      const res = await fetch(`${this.baseUrl}/account`, {
+        headers: this.getHeaders(),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (_err) {
+      return null;
+    }
+  }
+
   private getHeaders(): Record<string, string> {
     return {
       'APCA-API-KEY-ID': this.apiKey,
@@ -70,9 +91,13 @@ export class AlpacaBrokerProvider implements BrokerProvider {
       throw new Error(`Alpaca Broker is not connected or API keys are unconfigured.`);
     }
 
+    // Translate platform symbols to Alpaca symbols if necessary (e.g. SPX -> SPY)
+    let executionSymbol = order.symbol;
+    if (order.symbol === 'SPX') executionSymbol = 'SPY';
+
     // Alpaca uses lowercase sides (buy/sell) and types (market/limit/stop)
     const payload: any = {
-      symbol: order.symbol,
+      symbol: executionSymbol,
       qty: String(order.quantity),
       side: order.side.toLowerCase(),
       type: order.type.toLowerCase(),
@@ -99,7 +124,7 @@ export class AlpacaBrokerProvider implements BrokerProvider {
     });
 
     if (!res.ok) {
-      const err = await res.json() as any;
+      const err = ((await res.json().catch(() => ({}))) as any) || {};
       return {
         providerOrderId: '',
         clientOrderId: order.clientOrderId,
@@ -108,15 +133,16 @@ export class AlpacaBrokerProvider implements BrokerProvider {
         filledQuantity: 0,
         fee: 0,
         feeCurrency: 'USD',
-        rejectionReason: err.message || `Broker HTTP ${res.status}`,
+        rejectionReason: err.message || `Alpaca HTTP ${res.status}: ${res.statusText}`,
         timestamp: Date.now(),
       };
     }
 
-    const data = await res.json() as any;
+    const data = (await res.json()) as any;
     const statusMap: Record<string, OrderStatus> = {
       new: 'OPEN',
       accepted: 'OPEN',
+      pending_new: 'PENDING',
       partially_filled: 'PARTIALLY_FILLED',
       filled: 'FILLED',
       canceled: 'CANCELLED',
@@ -131,11 +157,11 @@ export class AlpacaBrokerProvider implements BrokerProvider {
     return {
       providerOrderId: data.id,
       clientOrderId: data.client_order_id || order.clientOrderId,
-      symbol: data.symbol,
+      symbol: order.symbol,
       status,
       filledQuantity: filledQty,
       averageFillPrice: avgPrice,
-      fee: 0, // Alpaca US equities feature zero commissions
+      fee: 0, // Alpaca zero commission US equities
       feeCurrency: 'USD',
       timestamp: new Date(data.created_at).getTime(),
     };
@@ -151,17 +177,17 @@ export class AlpacaBrokerProvider implements BrokerProvider {
     return res.status === 204 || res.ok;
   }
 
-  public async getOrder(providerOrderId: string, _symbol: string): Promise<ProviderOrderResult> {
+  public async getOrder(providerOrderId: string, symbol: string): Promise<ProviderOrderResult> {
     const res = await fetch(`${this.baseUrl}/orders/${providerOrderId}`, {
       headers: this.getHeaders(),
     });
     if (!res.ok) throw new Error(`Failed to get order from Alpaca: HTTP ${res.status}`);
-    const data = await res.json() as any;
+    const data = (await res.json()) as any;
 
     return {
       providerOrderId: data.id,
       clientOrderId: data.client_order_id,
-      symbol: data.symbol,
+      symbol,
       status: (data.status.toUpperCase() as OrderStatus) || 'OPEN',
       filledQuantity: parseFloat(data.filled_qty) || 0,
       averageFillPrice: data.filled_avg_price ? parseFloat(data.filled_avg_price) : undefined,
@@ -179,7 +205,7 @@ export class AlpacaBrokerProvider implements BrokerProvider {
 
     const res = await fetch(url, { headers: this.getHeaders() });
     if (!res.ok) return [];
-    const list = await res.json() as any[];
+    const list = (await res.json()) as any[];
 
     return list.map((data) => ({
       providerOrderId: data.id,
@@ -199,7 +225,7 @@ export class AlpacaBrokerProvider implements BrokerProvider {
 
     const res = await fetch(`${this.baseUrl}/positions`, { headers: this.getHeaders() });
     if (!res.ok) return [];
-    const list = await res.json() as any[];
+    const list = (await res.json()) as any[];
 
     return list.map((data) => ({
       symbol: data.symbol,
@@ -208,12 +234,11 @@ export class AlpacaBrokerProvider implements BrokerProvider {
       entryPrice: parseFloat(data.avg_entry_price),
       currentPrice: parseFloat(data.current_price),
       unrealizedPnl: parseFloat(data.unrealized_pl),
-      margin: Math.abs(parseFloat(data.market_value)) / 4, // Reg T 4:1 day trade margin
+      margin: Math.abs(parseFloat(data.market_value)) / 4,
     }));
   }
 
   public subscribeExecutionUpdates(_callback: (event: ProviderOrderResult) => void): () => void {
-    // Alpaca WebSocket execution stream can be connected via wss://paper-api.alpaca.markets/stream
     return () => {};
   }
 }

@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   RefreshCw,
   Home,
+  Cpu,
 } from 'lucide-react';
 
 export interface AuthUser {
@@ -41,6 +42,8 @@ interface TopNavProps {
   onOpenAuth: (tab?: 'login' | 'register') => void;
   onLogout: () => void;
   onGoHome?: () => void;
+  onOpenBroker?: () => void;
+  brokerName?: string;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -60,6 +63,8 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenAuth,
   onLogout,
   onGoHome,
+  onOpenBroker,
+  brokerName,
 }) => {
   const quickTapeSymbols = ['BTCUSD', 'EURUSD', 'XAUUSD'];
   const [profileOpen, setProfileOpen] = useState(false);
@@ -164,6 +169,23 @@ export const TopNav: React.FC<TopNavProps> = ({
           <span className="env-dot"></span>
           <span>{getEnvLabel()}</span>
           <ChevronDown size={11} />
+        </div>
+
+        {/* Real Broker Execution Gateway Pill */}
+        <div
+          className="environment-pill"
+          style={{
+            background: 'rgba(16, 185, 129, 0.12)',
+            color: '#10b981',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            cursor: 'pointer',
+          }}
+          onClick={onOpenBroker}
+          title="Click to configure Real Broker Execution (Alpaca Markets v2 / Live STP)"
+        >
+          <span className="env-dot" style={{ background: '#10b981' }}></span>
+          <span>{brokerName || 'REAL BROKER: ALPACA / STP'}</span>
+          <Cpu size={11} />
         </div>
 
         {/* Ticker Tape */}
@@ -353,6 +375,17 @@ export const TopNav: React.FC<TopNavProps> = ({
                     <span>Administrator Console</span>
                   </button>
                 )}
+
+                <button
+                  className="nav-profile-item"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    onOpenBroker?.();
+                  }}
+                >
+                  <Cpu size={14} color="#10b981" />
+                  <span>Real Broker Execution Gateway</span>
+                </button>
 
                 <button
                   className="nav-profile-item"

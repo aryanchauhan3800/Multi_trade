@@ -1,4 +1,5 @@
 // Composite Multi-Asset Market Data Provider
+// Routes Crypto to Binance Real Stream, and Stocks/Commodities/Forex to Real Stock Market Data Layer.
 
 import {
   MarketDataProvider,
@@ -8,6 +9,7 @@ import {
   TradeFeedData,
 } from '@nexus/core';
 import { BinanceMarketDataProvider } from './binance-market-data.js';
+import { RealStockMarketDataProvider } from './real-stock-market-data.js';
 import { MockMarketDataProvider } from '../mock/mock-market-data.js';
 
 export class CompositeMarketDataProvider implements MarketDataProvider {
@@ -15,9 +17,10 @@ export class CompositeMarketDataProvider implements MarketDataProvider {
   public isConnected = false;
 
   private binance: BinanceMarketDataProvider;
+  private realStock: RealStockMarketDataProvider;
   private mock: MockMarketDataProvider;
 
-  // Crypto symbols routed to Binance
+  // Crypto symbols routed to Binance Live Gateway
   private cryptoSymbols = new Set([
     'BTCUSD',
     'ETHUSD',
@@ -32,24 +35,47 @@ export class CompositeMarketDataProvider implements MarketDataProvider {
     'NEARUSD',
   ]);
 
+  // Stock, Commodity, Forex symbols routed to Real Stock Market Data Layer
+  private realSymbols = new Set([
+    'AAPL',
+    'NVDA',
+    'SPX',
+    'EURUSD',
+    'GBPUSD',
+    'XAUUSD',
+    'WTI',
+  ]);
+
   constructor() {
     this.binance = new BinanceMarketDataProvider();
+    this.realStock = new RealStockMarketDataProvider();
     this.mock = new MockMarketDataProvider();
   }
 
   public async connect(): Promise<void> {
-    await Promise.allSettled([this.binance.connect(), this.mock.connect()]);
+    await Promise.allSettled([
+      this.binance.connect(),
+      this.realStock.connect(),
+      this.mock.connect(),
+    ]);
     this.isConnected = true;
   }
 
   public async disconnect(): Promise<void> {
-    await Promise.allSettled([this.binance.disconnect(), this.mock.disconnect()]);
+    await Promise.allSettled([
+      this.binance.disconnect(),
+      this.realStock.disconnect(),
+      this.mock.disconnect(),
+    ]);
     this.isConnected = false;
   }
 
   private selectProvider(symbol: string): MarketDataProvider {
     if (this.cryptoSymbols.has(symbol) && this.binance.isConnected) {
       return this.binance;
+    }
+    if (this.realSymbols.has(symbol) && this.realStock.isConnected) {
+      return this.realStock;
     }
     return this.mock;
   }
@@ -58,7 +84,7 @@ export class CompositeMarketDataProvider implements MarketDataProvider {
     try {
       return await this.selectProvider(symbol).getTicker(symbol);
     } catch (_err) {
-      // Fallback to mock on network failure
+      // Fallback
       return await this.mock.getTicker(symbol);
     }
   }
@@ -81,8 +107,9 @@ export class CompositeMarketDataProvider implements MarketDataProvider {
 
   public async getTradableSymbols(): Promise<string[]> {
     const binanceSymbols = await this.binance.getTradableSymbols().catch(() => []);
+    const stockSymbols = await this.realStock.getTradableSymbols().catch(() => []);
     const mockSymbols = await this.mock.getTradableSymbols();
-    return Array.from(new Set([...binanceSymbols, ...mockSymbols]));
+    return Array.from(new Set([...binanceSymbols, ...stockSymbols, ...mockSymbols]));
   }
 
   public subscribeTicker(symbol: string, callback: (ticker: TickerData) => void): () => void {

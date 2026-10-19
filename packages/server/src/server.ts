@@ -337,6 +337,45 @@ app.get('/api/wallet/transactions', (_req: Request, res: Response) => {
 });
 
 // -------------------------------------------------------------
+// REAL BROKER EXECUTION & GATEWAY CONFIGURATION
+// -------------------------------------------------------------
+
+// Get Real Broker Status & Live Account Telemetry
+app.get('/api/broker/status', async (_req: Request, res: Response) => {
+  try {
+    const status = await broker.getBrokerStatus();
+    res.json({ status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Configure Real Broker API Credentials (Alpaca Markets Live/Paper)
+app.post('/api/broker/config', async (req: Request, res: Response) => {
+  try {
+    const { apiKey, apiSecret, environment } = req.body;
+    if (!apiKey || !apiSecret) {
+      return res.status(400).json({ error: 'Both apiKey and apiSecret are required' });
+    }
+
+    const result = await broker.configureBroker({ apiKey, apiSecret, environment });
+    if (result.success) {
+      auditLogs.unshift({
+        id: `aud_broker_${Date.now()}`,
+        time: new Date().toLocaleTimeString(),
+        action: 'BROKER_CONNECTED',
+        details: `Connected to Alpaca Markets v2 API in ${environment || broker.environment} mode. Real stock transactions enabled.`,
+        status: 'SUCCESS',
+      });
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
 // ADMIN & RISK MANAGEMENT ENDPOINTS
 // -------------------------------------------------------------
 

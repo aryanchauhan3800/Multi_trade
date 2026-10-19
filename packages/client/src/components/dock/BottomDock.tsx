@@ -14,6 +14,7 @@ interface BottomDockProps {
   positions: Position[];
   openOrders: Order[];
   tradeHistory: Trade[];
+  transactions?: any[];
   auditLogs: AuditItem[];
   equity: number;
   usedMargin: number;
@@ -24,12 +25,13 @@ interface BottomDockProps {
   onCancelOrder: (orderId: string) => void;
 }
 
-export type DockTab = 'positions' | 'orders' | 'history' | 'activity';
+export type DockTab = 'positions' | 'orders' | 'history' | 'transactions' | 'activity';
 
 export const BottomDock: React.FC<BottomDockProps> = ({
   positions,
   openOrders,
   tradeHistory,
+  transactions = [],
   auditLogs,
   equity,
   usedMargin,
@@ -63,6 +65,12 @@ export const BottomDock: React.FC<BottomDockProps> = ({
             onClick={() => setActiveTab('history')}
           >
             Trade History <span className="dock-badge">{tradeHistory.length}</span>
+          </button>
+          <button
+            className={`dock-tab-btn ${activeTab === 'transactions' ? 'active' : ''}`}
+            onClick={() => setActiveTab('transactions')}
+          >
+            Transactions <span className="dock-badge">{transactions.length}</span>
           </button>
           <button
             className={`dock-tab-btn ${activeTab === 'activity' ? 'active' : ''}`}
@@ -228,19 +236,22 @@ export const BottomDock: React.FC<BottomDockProps> = ({
                 <th>Fill Price</th>
                 <th>Realized P&L</th>
                 <th>Fee</th>
+                <th>Execution Ref / Venue</th>
               </tr>
             </thead>
             <tbody>
               {tradeHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-tertiary)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-tertiary)' }}>
                     No trade executions recorded today.
                   </td>
                 </tr>
               ) : (
                 tradeHistory.map((tr) => (
                   <tr key={tr.id} className="dock-row">
-                    <td className="num" style={{ color: 'var(--text-tertiary)' }}>{tr.executedAt}</td>
+                    <td className="num" style={{ color: 'var(--text-tertiary)' }}>
+                      {new Date(tr.executedAt).toLocaleTimeString()}
+                    </td>
                     <td style={{ fontWeight: 600 }}>{tr.symbol}</td>
                     <td style={{ color: tr.side === 'BUY' ? 'var(--trade-buy)' : 'var(--trade-sell)', fontWeight: 600 }}>
                       {tr.side}
@@ -251,6 +262,73 @@ export const BottomDock: React.FC<BottomDockProps> = ({
                       {tr.realizedPnl >= 0 ? '+' : ''}${tr.realizedPnl.toFixed(2)}
                     </td>
                     <td className="num">${tr.fee.toFixed(2)}</td>
+                    <td className="num" style={{ fontSize: 10, color: 'var(--accent-primary)' }}>
+                      {tr.providerId ? tr.providerId.substring(0, 16) : tr.id.substring(0, 16)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+
+        {activeTab === 'transactions' && (
+          <table className="dock-table">
+            <thead>
+              <tr>
+                <th>Tx Reference</th>
+                <th>Timestamp</th>
+                <th>Execution Venue</th>
+                <th>Type</th>
+                <th>Amount (USD)</th>
+                <th>Transaction Details</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-tertiary)' }}>
+                    No financial transactions recorded in ledger.
+                  </td>
+                </tr>
+              ) : (
+                transactions.map((tx: any) => (
+                  <tr key={tx.id} className="dock-row">
+                    <td className="num" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <div>{tx.referenceId ? tx.referenceId.substring(0, 16) : tx.id.substring(0, 16)}</div>
+                      <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{tx.id}</div>
+                    </td>
+                    <td className="num" style={{ color: 'var(--text-tertiary)' }}>
+                      {new Date(tx.createdAt).toLocaleTimeString()}
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '2px 6px',
+                          borderRadius: 3,
+                          background: tx.method?.includes('ALPACA') ? 'rgba(139, 92, 246, 0.15)' : 'var(--accent-subtle)',
+                          color: tx.method?.includes('ALPACA') ? '#8b5cf6' : 'var(--accent-primary)',
+                          border: `1px solid ${tx.method?.includes('ALPACA') ? '#8b5cf644' : 'var(--accent-primary)44'}`,
+                        }}
+                      >
+                        {tx.method || 'LIVE_STP'}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 600, color: tx.type === 'DEPOSIT' ? 'var(--trade-buy)' : 'var(--trade-sell)' }}>
+                      {tx.type}
+                    </td>
+                    <td className="num" style={{ fontWeight: 700 }}>
+                      ${tx.amount ? tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}
+                    </td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{tx.details || '—'}</td>
+                    <td>
+                      <span style={{ color: 'var(--trade-buy)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                        <CheckCircle2 size={12} /> {tx.status}
+                      </span>
+                    </td>
                   </tr>
                 ))
               )}

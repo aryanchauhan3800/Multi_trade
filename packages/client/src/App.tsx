@@ -22,6 +22,7 @@ import { DepositModal } from './components/modals/DepositModal.js';
 import { PortfolioModal } from './components/modals/PortfolioModal.js';
 import { AdminModal } from './components/modals/AdminModal.js';
 import { AuthModal } from './components/modals/AuthModal.js';
+import { BrokerModal } from './components/modals/BrokerModal.js';
 import { HomePage } from './components/home/HomePage.js';
 
 import { BarChart2, Star, TrendingUp, PieChart, User, AlertTriangle } from 'lucide-react';
@@ -75,6 +76,9 @@ export const App: React.FC = () => {
   const [showDepositModal, setShowDepositModal] = useState<boolean>(false);
   const [showPortfolioModal, setShowPortfolioModal] = useState<boolean>(false);
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
+  const [showBrokerModal, setShowBrokerModal] = useState<boolean>(false);
+  const [brokerStatus, setBrokerStatus] = useState<any | null>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
 
   // Real-Time Market Data Tickers (100% Live Streamed, No Static Prices)
   const [tickers, setTickers] = useState<Map<string, TickerData>>(new Map());
@@ -133,6 +137,26 @@ export const App: React.FC = () => {
       .then((data) => {
         if (data && data.auditLogs) {
           setAuditLogs(data.auditLogs);
+        }
+      })
+      .catch(() => {});
+
+    // 6. Real Transaction Ledger
+    fetch(`${SERVER_BASE}/api/wallet/transactions`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.transactions) {
+          setTransactions(data.transactions);
+        }
+      })
+      .catch(() => {});
+
+    // 7. Broker Telemetry Status
+    fetch(`${SERVER_BASE}/api/broker/status`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.status) {
+          setBrokerStatus(data.status);
         }
       })
       .catch(() => {});
@@ -539,6 +563,14 @@ export const App: React.FC = () => {
             }}
             onLogout={handleLogout}
             onGoHome={() => setCurrentView('home')}
+            onOpenBroker={() => setShowBrokerModal(true)}
+            brokerName={
+              brokerStatus?.provider === 'ALPACA_LIVE'
+                ? 'ALPACA LIVE'
+                : brokerStatus?.provider === 'ALPACA_PAPER'
+                ? 'ALPACA PAPER'
+                : 'REAL BROKER: LIVE STP'
+            }
           />
 
           {/* Institutional Margin Call / Stop-Out Alert Banner */}
@@ -604,6 +636,7 @@ export const App: React.FC = () => {
               positions={positions}
               openOrders={openOrders}
               tradeHistory={tradeHistory}
+              transactions={transactions}
               auditLogs={auditLogs}
               equity={equity}
               usedMargin={usedMargin}
@@ -708,6 +741,14 @@ export const App: React.FC = () => {
           initialTab={authModalTab}
           onClose={() => setShowAuthModal(false)}
           onAuthSuccess={handleAuthSuccess}
+        />
+      )}
+
+      {/* Real Broker Execution Gateway Modal */}
+      {showBrokerModal && (
+        <BrokerModal
+          onClose={() => setShowBrokerModal(false)}
+          onRefreshParent={syncServerState}
         />
       )}
     </div>

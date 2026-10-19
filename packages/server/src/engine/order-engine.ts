@@ -289,6 +289,22 @@ export class OrderEngine {
       executedAt: new Date().toISOString(),
     };
     this.trades.unshift(trade);
+
+    // Record Real Transaction Ledger Entry
+    const tradeTxn: WalletTransaction = {
+      id: `tx_${trade.id}`,
+      accountId: order.accountId,
+      type: 'DEPOSIT',
+      amount: Number((order.quantity * fillPrice).toFixed(2)),
+      currency: 'USD',
+      status: 'COMPLETED',
+      method: order.providerId && order.providerId.startsWith('alp_') ? 'ALPACA_BROKER' : 'LIVE_EXCHANGE_STP',
+      referenceId: order.providerId || order.clientOrderId,
+      details: `${order.side} ${order.quantity} ${order.symbol} @ $${fillPrice.toFixed(2)} (Fee: $${order.fee.toFixed(2)} USD)`,
+      createdAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+    this.transactions.unshift(tradeTxn);
   }
 
   public async cancelOrder(orderId: string): Promise<boolean> {
@@ -356,6 +372,22 @@ export class OrderEngine {
       executedAt: new Date().toISOString(),
     };
     this.trades.unshift(closingTrade);
+
+    // Record Real Settlement Transaction
+    const closeTxn: WalletTransaction = {
+      id: `tx_${closingTrade.id}`,
+      accountId: targetPos.accountId,
+      type: realizedPnl >= 0 ? 'DEPOSIT' : 'WITHDRAWAL',
+      amount: Math.abs(Number(realizedPnl.toFixed(2))),
+      currency: 'USD',
+      status: 'COMPLETED',
+      method: 'REALIZED_PNL_SETTLEMENT',
+      referenceId: closingTrade.id,
+      details: `Settled P&L for ${targetPos.side} ${targetPos.quantity} ${targetPos.symbol} (Exit: $${exitPrice.toFixed(2)}): ${realizedPnl >= 0 ? '+' : '-'}$${Math.abs(realizedPnl).toFixed(2)} USD`,
+      createdAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+    this.transactions.unshift(closeTxn);
 
     this.positions.delete(targetKey);
     this.events.onPositionClosed?.(targetPos, realizedPnl);
