@@ -22,6 +22,7 @@ import { DepositModal } from './components/modals/DepositModal.js';
 import { PortfolioModal } from './components/modals/PortfolioModal.js';
 import { AdminModal } from './components/modals/AdminModal.js';
 import { AuthModal } from './components/modals/AuthModal.js';
+import { HomePage } from './components/home/HomePage.js';
 
 import { BarChart2, Star, TrendingUp, PieChart, User, AlertTriangle } from 'lucide-react';
 
@@ -43,6 +44,9 @@ export const App: React.FC = () => {
   // Environment & Role State
   const [environment, setEnvironment] = useState<EnvironmentMode>('PAPER_TRADING');
   const [userRole, setUserRole] = useState<UserRole>('TRADER');
+
+  // Page View State: 'home' | 'terminal'
+  const [currentView, setCurrentView] = useState<'home' | 'terminal'>('home');
 
   // Authentication & Identity State
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -496,140 +500,161 @@ export const App: React.FC = () => {
 
   return (
     <div className="nexus-terminal">
-      {/* Top Navigation HUD */}
-      <TopNav
-        environment={environment}
-        userRole={userRole}
-        currentUser={currentUser}
-        theme={theme}
-        accountBalance={balance}
-        equity={equity}
-        tickers={tickers}
-        onSelectSymbol={setSelectedSymbol}
-        onToggleTheme={handleToggleTheme}
-        onOpenDeposit={() => setShowDepositModal(true)}
-        onOpenPortfolio={() => setShowPortfolioModal(true)}
-        onOpenAdmin={() => setShowAdminModal(true)}
-        onChangeEnvironment={setEnvironment}
-        onOpenAuth={(tab) => {
-          setAuthModalTab(tab || 'login');
-          setShowAuthModal(true);
-        }}
-        onLogout={handleLogout}
-      />
-
-      {/* Institutional Margin Call / Stop-Out Alert Banner */}
-      {marginLevel < 100 && (
-        <div
-          style={{
-            background: marginLevel <= 50 ? '#dc2626' : '#d97706',
-            color: '#ffffff',
-            padding: '6px 16px',
-            fontSize: '11px',
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            letterSpacing: '0.04em',
-            zIndex: 100,
-          }}
-        >
-          <AlertTriangle size={15} />
-          <span>
-            {marginLevel <= 50
-              ? `CRITICAL STOP-OUT: Margin Level is ${marginLevel.toFixed(1)}% (<= 50.0%). Auto-liquidation of positions in progress!`
-              : `MARGIN CALL WARNING: Margin Level is ${marginLevel.toFixed(1)}% (< 100.0%). Deposit margin or reduce exposure immediately to prevent stop-out liquidation.`}
-          </span>
-        </div>
-      )}
-
-      {/* Main 4-Quadrant Workspace Grid */}
-      <main className="workspace-grid">
-        {/* Left: Markets & Watchlist */}
-        <WatchlistPanel
+      {currentView === 'home' ? (
+        <HomePage
           tickers={tickers}
-          selectedSymbol={selectedSymbol}
-          onSelectSymbol={setSelectedSymbol}
-          flashingSymbols={flashingSymbols}
+          theme={theme}
+          currentUser={currentUser}
+          onLaunchTerminal={(symbol) => {
+            if (symbol) setSelectedSymbol(symbol);
+            setCurrentView('terminal');
+          }}
+          onOpenAuth={(tab) => {
+            setAuthModalTab(tab || 'login');
+            setShowAuthModal(true);
+          }}
+          onToggleTheme={handleToggleTheme}
+          onLogout={handleLogout}
         />
+      ) : (
+        <>
+          {/* Top Navigation HUD */}
+          <TopNav
+            environment={environment}
+            userRole={userRole}
+            currentUser={currentUser}
+            theme={theme}
+            accountBalance={balance}
+            equity={equity}
+            tickers={tickers}
+            onSelectSymbol={setSelectedSymbol}
+            onToggleTheme={handleToggleTheme}
+            onOpenDeposit={() => setShowDepositModal(true)}
+            onOpenPortfolio={() => setShowPortfolioModal(true)}
+            onOpenAdmin={() => setShowAdminModal(true)}
+            onChangeEnvironment={setEnvironment}
+            onOpenAuth={(tab) => {
+              setAuthModalTab(tab || 'login');
+              setShowAuthModal(true);
+            }}
+            onLogout={handleLogout}
+            onGoHome={() => setCurrentView('home')}
+          />
 
-        {/* Center: Interactive Pro Chart */}
-        <TradingChart
-          symbol={selectedSymbol}
-          candles={candles}
-          currentPrice={currentSelectedTicker?.lastPrice || 0}
-          openPosition={currentOpenPosition}
-          timeframe={timeframe}
-          onChangeTimeframe={setTimeframe}
-          onUpdatePosition={handleUpdatePosition}
-        />
+          {/* Institutional Margin Call / Stop-Out Alert Banner */}
+          {marginLevel < 100 && (
+            <div
+              style={{
+                background: marginLevel <= 50 ? '#dc2626' : '#d97706',
+                color: '#ffffff',
+                padding: '6px 16px',
+                fontSize: '11px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                letterSpacing: '0.04em',
+                zIndex: 100,
+              }}
+            >
+              <AlertTriangle size={15} />
+              <span>
+                {marginLevel <= 50
+                  ? `CRITICAL STOP-OUT: Margin Level is ${marginLevel.toFixed(1)}% (<= 50.0%). Auto-liquidation of positions in progress!`
+                  : `MARGIN CALL WARNING: Margin Level is ${marginLevel.toFixed(1)}% (< 100.0%). Deposit margin or reduce exposure immediately to prevent stop-out liquidation.`}
+              </span>
+            </div>
+          )}
 
-        {/* Right: Order Entry & Risk Calculator */}
-        <OrderEntryPanel
-          symbol={selectedSymbol}
-          ticker={currentSelectedTicker}
-          availableBalance={freeMargin}
-          leverage={leverage}
-          oneClickMode={oneClickMode}
-          onToggleOneClick={setOneClickMode}
-          onRequestOrder={handleOrderRequest}
-        />
+          {/* Main 4-Quadrant Workspace Grid */}
+          <main className="workspace-grid">
+            {/* Left: Markets & Watchlist */}
+            <WatchlistPanel
+              tickers={tickers}
+              selectedSymbol={selectedSymbol}
+              onSelectSymbol={setSelectedSymbol}
+              flashingSymbols={flashingSymbols}
+            />
 
-        {/* Bottom: Tabbed Workspace Dock */}
-        <BottomDock
-          positions={positions}
-          openOrders={openOrders}
-          tradeHistory={tradeHistory}
-          auditLogs={auditLogs}
-          equity={equity}
-          usedMargin={usedMargin}
-          freeMargin={freeMargin}
-          marginLevel={marginLevel}
-          dailyPnl={dailyPnl}
-          onClosePosition={handleClosePosition}
-          onCancelOrder={handleCancelOrder}
-        />
-      </main>
+            {/* Center: Interactive Pro Chart */}
+            <TradingChart
+              symbol={selectedSymbol}
+              candles={candles}
+              currentPrice={currentSelectedTicker?.lastPrice || 0}
+              openPosition={currentOpenPosition}
+              timeframe={timeframe}
+              onChangeTimeframe={setTimeframe}
+              onUpdatePosition={handleUpdatePosition}
+            />
 
-      {/* Mobile Bottom Tab Bar */}
-      <nav className="mobile-nav-bar">
-        <button
-          className={`mobile-nav-item ${mobileTab === 'markets' ? 'active' : ''}`}
-          onClick={() => setMobileTab('markets')}
-        >
-          <BarChart2 size={18} />
-          <span>Markets</span>
-        </button>
-        <button
-          className={`mobile-nav-item ${mobileTab === 'watchlist' ? 'active' : ''}`}
-          onClick={() => setMobileTab('watchlist')}
-        >
-          <Star size={18} />
-          <span>Watchlist</span>
-        </button>
-        <button
-          className={`mobile-nav-item ${mobileTab === 'trade' ? 'active' : ''}`}
-          onClick={() => setMobileTab('trade')}
-        >
-          <TrendingUp size={18} />
-          <span>Trade</span>
-        </button>
-        <button
-          className={`mobile-nav-item ${mobileTab === 'portfolio' ? 'active' : ''}`}
-          onClick={() => setShowPortfolioModal(true)}
-        >
-          <PieChart size={18} />
-          <span>Portfolio</span>
-        </button>
-        <button
-          className={`mobile-nav-item ${mobileTab === 'account' ? 'active' : ''}`}
-          onClick={() => setShowDepositModal(true)}
-        >
-          <User size={18} />
-          <span>Account</span>
-        </button>
-      </nav>
+            {/* Right: Order Entry & Risk Calculator */}
+            <OrderEntryPanel
+              symbol={selectedSymbol}
+              ticker={currentSelectedTicker}
+              availableBalance={freeMargin}
+              leverage={leverage}
+              oneClickMode={oneClickMode}
+              onToggleOneClick={setOneClickMode}
+              onRequestOrder={handleOrderRequest}
+            />
+
+            {/* Bottom: Tabbed Workspace Dock */}
+            <BottomDock
+              positions={positions}
+              openOrders={openOrders}
+              tradeHistory={tradeHistory}
+              auditLogs={auditLogs}
+              equity={equity}
+              usedMargin={usedMargin}
+              freeMargin={freeMargin}
+              marginLevel={marginLevel}
+              dailyPnl={dailyPnl}
+              onClosePosition={handleClosePosition}
+              onCancelOrder={handleCancelOrder}
+            />
+          </main>
+
+          {/* Mobile Bottom Tab Bar */}
+          <nav className="mobile-nav-bar">
+            <button
+              className={`mobile-nav-item ${mobileTab === 'markets' ? 'active' : ''}`}
+              onClick={() => setMobileTab('markets')}
+            >
+              <BarChart2 size={18} />
+              <span>Markets</span>
+            </button>
+            <button
+              className={`mobile-nav-item ${mobileTab === 'watchlist' ? 'active' : ''}`}
+              onClick={() => setMobileTab('watchlist')}
+            >
+              <Star size={18} />
+              <span>Watchlist</span>
+            </button>
+            <button
+              className={`mobile-nav-item ${mobileTab === 'trade' ? 'active' : ''}`}
+              onClick={() => setMobileTab('trade')}
+            >
+              <TrendingUp size={18} />
+              <span>Trade</span>
+            </button>
+            <button
+              className={`mobile-nav-item ${mobileTab === 'portfolio' ? 'active' : ''}`}
+              onClick={() => setShowPortfolioModal(true)}
+            >
+              <PieChart size={18} />
+              <span>Portfolio</span>
+            </button>
+            <button
+              className={`mobile-nav-item ${mobileTab === 'account' ? 'active' : ''}`}
+              onClick={() => setShowDepositModal(true)}
+            >
+              <User size={18} />
+              <span>Account</span>
+            </button>
+          </nav>
+        </>
+      )}
 
       {/* Confirmation Modal */}
       {pendingConfirmationOrder && (

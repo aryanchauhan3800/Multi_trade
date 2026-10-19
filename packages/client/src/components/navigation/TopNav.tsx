@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   RefreshCw,
+  Home,
 } from 'lucide-react';
 
 export interface AuthUser {
@@ -39,6 +40,7 @@ interface TopNavProps {
   onChangeEnvironment: (env: EnvironmentMode) => void;
   onOpenAuth: (tab?: 'login' | 'register') => void;
   onLogout: () => void;
+  onGoHome?: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -57,6 +59,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onChangeEnvironment,
   onOpenAuth,
   onLogout,
+  onGoHome,
 }) => {
   const quickTapeSymbols = ['BTCUSD', 'EURUSD', 'XAUUSD'];
   const [profileOpen, setProfileOpen] = useState(false);
@@ -122,10 +125,27 @@ export const TopNav: React.FC<TopNavProps> = ({
     <header className="top-nav">
       {/* Brand & Environment */}
       <div className="nav-left">
-        <div className="brand-badge">
+        <div
+          className="brand-badge"
+          onClick={onGoHome}
+          style={{ cursor: onGoHome ? 'pointer' : 'default' }}
+          title={onGoHome ? 'Return to Nexus Home' : undefined}
+        >
           <div className="brand-logo-icon">N</div>
           <span>NEXUS</span>
         </div>
+
+        {onGoHome && (
+          <button
+            className="btn-secondary"
+            onClick={onGoHome}
+            style={{ fontSize: 11, padding: '3px 8px', gap: 4 }}
+            title="Return to Home Page"
+          >
+            <Home size={12} />
+            <span>Home</span>
+          </button>
+        )}
 
         {/* Environment Mode Switcher */}
         <div
