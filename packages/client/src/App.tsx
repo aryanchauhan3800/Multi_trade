@@ -12,7 +12,7 @@ import {
   calculateUnrealizedPnl,
 } from '@nexus/core';
 
-import { TopNav } from './components/navigation/TopNav.js';
+import { TopNav, AuthUser } from './components/navigation/TopNav.js';
 import { WatchlistPanel } from './components/watchlist/WatchlistPanel.js';
 import { TradingChart, Timeframe } from './components/chart/TradingChart.js';
 import { OrderEntryPanel } from './components/order/OrderEntryPanel.js';
@@ -21,6 +21,7 @@ import { OrderConfirmModal } from './components/order/OrderConfirmModal.js';
 import { DepositModal } from './components/modals/DepositModal.js';
 import { PortfolioModal } from './components/modals/PortfolioModal.js';
 import { AdminModal } from './components/modals/AdminModal.js';
+import { AuthModal } from './components/modals/AuthModal.js';
 
 import { BarChart2, Star, TrendingUp, PieChart, User, AlertTriangle } from 'lucide-react';
 
@@ -41,7 +42,12 @@ export const App: React.FC = () => {
 
   // Environment & Role State
   const [environment, setEnvironment] = useState<EnvironmentMode>('PAPER_TRADING');
-  const [userRole, setUserRole] = useState<UserRole>('ADMIN');
+  const [userRole, setUserRole] = useState<UserRole>('TRADER');
+
+  // Authentication & Identity State
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
 
   // Mobile View State
   const [mobileTab, setMobileTab] = useState<'markets' | 'watchlist' | 'trade' | 'portfolio' | 'account'>('trade');
@@ -132,6 +138,30 @@ export const App: React.FC = () => {
   useEffect(() => {
     syncServerState();
 
+    // Auto-restore authenticated session from localStorage
+    const token = localStorage.getItem('nexus_auth_token');
+    if (token) {
+      fetch(`${SERVER_BASE}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.session) {
+            const usr: AuthUser = {
+              id: data.session.userId,
+              email: data.session.email,
+              role: data.session.role,
+              accountId: data.session.accountId,
+            };
+            setCurrentUser(usr);
+            setUserRole(usr.role);
+          } else {
+            localStorage.removeItem('nexus_auth_token');
+          }
+        })
+        .catch(() => {});
+    }
+
     // Fetch initial tickers
     fetch(`${SERVER_BASE}/api/markets/tickers`)
       .then((res) => (res.ok ? res.json() : null))
@@ -146,6 +176,48 @@ export const App: React.FC = () => {
       })
       .catch(() => {});
   }, [syncServerState]);
+
+  const handleAuthSuccess = (session: { token: string; user: AuthUser }) => {
+    setCurrentUser(session.user);
+    setUserRole(session.user.role);
+    localStorage.setItem('nexus_auth_token', session.token);
+    syncServerState();
+    setAuditLogs((prev) => [
+      {
+        id: `aud_auth_${Date.now()}`,
+        time: new Date().toLocaleTimeString(),
+        action: 'USER_AUTHENTICATED',
+        details: `Active session established for ${session.user.email} (${session.user.role}). Account: ${session.user.accountId}`,
+        status: 'SUCCESS',
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem('nexus_auth_token');
+    if (token) {
+      try {
+        await fetch(`${SERVER_BASE}/api/auth/logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (_err) {}
+    }
+    localStorage.removeItem('nexus_auth_token');
+    setCurrentUser(null);
+    setUserRole('TRADER');
+    setAuditLogs((prev) => [
+      {
+        id: `aud_logout_${Date.now()}`,
+        time: new Date().toLocaleTimeString(),
+        action: 'USER_LOGOUT',
+        details: 'Session invalidated. Terminal session terminated.',
+        status: 'WARNING',
+      },
+      ...prev,
+    ]);
+  };
 
   // Fetch 100% Real-Time Candlesticks when Symbol or Timeframe changes
   useEffect(() => {
@@ -332,9 +404,15 @@ export const App: React.FC = () => {
   // Execute Order via Authenticated Server OMS
   const executeOrderOnServer = async (orderParams: any) => {
     try {
+      const token = localStorage.getItem('nexus_auth_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(`${SERVER_BASE}/api/orders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           symbol: orderParams.symbol,
           side: orderParams.side,
@@ -422,6 +500,7 @@ export const App: React.FC = () => {
       <TopNav
         environment={environment}
         userRole={userRole}
+        currentUser={currentUser}
         theme={theme}
         accountBalance={balance}
         equity={equity}
@@ -432,6 +511,11 @@ export const App: React.FC = () => {
         onOpenPortfolio={() => setShowPortfolioModal(true)}
         onOpenAdmin={() => setShowAdminModal(true)}
         onChangeEnvironment={setEnvironment}
+        onOpenAuth={(tab) => {
+          setAuthModalTab(tab || 'login');
+          setShowAuthModal(true);
+        }}
+        onLogout={handleLogout}
       />
 
       {/* Institutional Margin Call / Stop-Out Alert Banner */}
@@ -590,6 +674,15 @@ export const App: React.FC = () => {
         <AdminModal
           onClose={() => setShowAdminModal(false)}
           onRefreshParent={syncServerState}
+        />
+      )}
+
+      {/* Identity & Authentication Portal Modal */}
+      {showAuthModal && (
+        <AuthModal
+          initialTab={authModalTab}
+          onClose={() => setShowAuthModal(false)}
+          onAuthSuccess={handleAuthSuccess}
         />
       )}
     </div>
