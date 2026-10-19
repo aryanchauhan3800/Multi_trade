@@ -154,13 +154,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({ onClose, onRefreshParent
                 <div style={{ background: 'var(--bg-surface-elevated)', padding: 12, borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Broker Router</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#10b981', marginTop: 4 }}>
-                    {overview?.broker?.name || 'Alpaca / Mock'}
+                    {overview?.broker?.name || 'Alpaca / STP Engine'}
                   </div>
                 </div>
                 <div style={{ background: 'var(--bg-surface-elevated)', padding: 12, borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Market Feed</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Market Feeds</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#10b981', marginTop: 4 }}>
-                    Binance L1/L2
+                    Binance & Yahoo v8
                   </div>
                 </div>
               </div>

@@ -618,8 +618,13 @@ export const HomePage: React.FC<HomePageProps> = ({
             </div>
           </div>
 
-          {/* Interactive Mock Preview Box */}
-          <div className="home-platform-preview">
+          {/* Live Interactive Preview Box */}
+          <div
+            className="home-platform-preview"
+            onClick={() => onLaunchTerminal('BTCUSD')}
+            style={{ cursor: 'pointer' }}
+            title="Click to launch terminal with BTCUSD"
+          >
             <div className="home-preview-hud">
               <span style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>NEXUS PRO TERMINAL v1.0</span>
               <span style={{ color: 'var(--trade-buy)', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -631,22 +636,38 @@ export const HomePage: React.FC<HomePageProps> = ({
               <div className="home-preview-box">
                 <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>ACTIVE INSTRUMENT</span>
                 <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>BTC/USD</span>
-                <span style={{ fontSize: 12, color: 'var(--trade-buy)', fontWeight: 700 }}>$68,450.00 (+3.24%)</span>
+                {tickers.get('BTCUSD') ? (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: (tickers.get('BTCUSD')?.change24h || 0) >= 0 ? 'var(--trade-buy)' : 'var(--trade-sell)',
+                      fontWeight: 700,
+                    }}
+                  >
+                    ${tickers.get('BTCUSD')!.lastPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (
+                    {(tickers.get('BTCUSD')?.change24h || 0) >= 0 ? '+' : ''}
+                    {(tickers.get('BTCUSD')?.change24h || 0).toFixed(2)}%)
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 12, color: 'var(--trade-buy)', fontWeight: 700 }}>Connecting live feed...</span>
+                )}
               </div>
               <div className="home-preview-box">
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>MARGIN LEVEL</span>
-                <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--trade-buy)' }}>999,999%</span>
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>FREE MARGIN: $100,000.00</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>EXECUTION VENUE</span>
+                <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--trade-buy)' }}>STP / DMA</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  SPREAD: {tickers.get('BTCUSD') ? (tickers.get('BTCUSD')!.ask - tickers.get('BTCUSD')!.bid).toFixed(2) : '0.10'} USD
+                </span>
               </div>
             </div>
 
             <div style={{ background: 'var(--bg-surface)', padding: 12, borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-subtle)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 6 }}>
-                <span>Order Execution Speed</span>
-                <span className="num" style={{ color: 'var(--trade-buy)' }}>14.2 ms</span>
+                <span>Order Execution Gateway</span>
+                <span className="num" style={{ color: 'var(--trade-buy)' }}>Alpaca API v2 & STP Engine</span>
               </div>
               <div style={{ width: '100%', height: 4, background: 'var(--bg-surface-elevated)', borderRadius: 2 }}>
-                <div style={{ width: '92%', height: '100%', background: 'var(--accent-primary)', borderRadius: 2 }}></div>
+                <div style={{ width: '96%', height: '100%', background: 'var(--accent-primary)', borderRadius: 2 }}></div>
               </div>
             </div>
           </div>
