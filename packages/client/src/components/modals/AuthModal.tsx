@@ -239,8 +239,68 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {/* Dynamic On-Demand Demo Generators */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Zap size={13} color="#f59e0b" /> Instant Dynamic Demo Session (Zero Static Credentials):
+              <Zap size={13} color="#f59e0b" /> One-Click Demo Access & Seeded Accounts:
             </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('admin@nexus.exchange');
+                  setPassword('NexusAdmin2026!');
+                  setTab('login');
+                  setErrorMsg(null);
+                  submitAuth('admin@nexus.exchange', 'NexusAdmin2026!', 'login');
+                }}
+                disabled={loading}
+                style={{
+                  background: 'var(--bg-surface-elevated)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '8px 10px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontSize: 16 }}>👑</div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>Sign In as Admin</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>admin@nexus.exchange</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('trader@nexus.exchange');
+                  setPassword('Trader2026!');
+                  setTab('login');
+                  setErrorMsg(null);
+                  submitAuth('trader@nexus.exchange', 'Trader2026!', 'login');
+                }}
+                disabled={loading}
+                style={{
+                  background: 'var(--bg-surface-elevated)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '8px 10px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontSize: 16 }}>📈</div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>Sign In as Trader</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>trader@nexus.exchange</div>
+                </div>
+              </button>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button
                 type="button"
@@ -250,19 +310,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   background: 'var(--bg-surface-elevated)',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: 'var(--radius-xs)',
-                  padding: '9px 10px',
+                  padding: '8px 10px',
                   textAlign: 'left',
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 2,
-                  transition: 'var(--trans-fast)',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
               >
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-primary)' }}>⚡ Fresh Demo Trader</span>
-                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Generate dynamic trader</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-primary)' }}>⚡ Fresh Guest Trader</span>
+                <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>Auto-generate on-demand</span>
               </button>
 
               <button
@@ -273,29 +330,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   background: 'var(--bg-surface-elevated)',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: 'var(--radius-xs)',
-                  padding: '9px 10px',
+                  padding: '8px 10px',
                   textAlign: 'left',
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 2,
-                  transition: 'var(--trans-fast)',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#8b5cf6')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
               >
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6' }}>🛡️ Fresh Demo Admin</span>
-                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Generate dynamic admin</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6' }}>🛡️ Fresh Guest Admin</span>
+                <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>Auto-generate on-demand</span>
               </button>
             </div>
           </div>
 
-          {/* Error Banner */}
+          {/* Error Banner with Smart Action */}
           {errorMsg && (
             <div
               style={{
                 display: 'flex',
-                alignItems: 'center',
+                flexDirection: 'column',
                 gap: 8,
                 padding: '10px 12px',
                 borderRadius: 'var(--radius-xs)',
@@ -306,8 +360,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 marginBottom: 16,
               }}
             >
-              <AlertCircle size={16} />
-              <span>{errorMsg}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{errorMsg}</span>
+              </div>
+              {tab === 'login' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab('register');
+                    setErrorMsg(null);
+                  }}
+                  style={{
+                    alignSelf: 'flex-start',
+                    background: 'var(--accent-primary)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: 4,
+                    padding: '4px 10px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    marginTop: 2,
+                  }}
+                >
+                  👉 Switch to "Open Account" to register {email ? `"${email}"` : 'now'}
+                </button>
+              )}
             </div>
           )}
 

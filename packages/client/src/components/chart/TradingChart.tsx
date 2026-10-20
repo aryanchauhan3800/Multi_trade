@@ -5,9 +5,6 @@ import {
   BarChart2,
   Maximize2,
   Minimize2,
-  Activity,
-  Layers,
-  Settings,
 } from 'lucide-react';
 
 interface TradingChartProps {
@@ -30,13 +27,13 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   candles,
   currentPrice,
   openPosition,
-  pendingOrder,
   timeframe: externalTimeframe,
   onChangeTimeframe,
   onUpdateSlTp,
   onUpdatePosition,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [chartType, setChartType] = useState<ChartType>('candlestick');
@@ -53,10 +50,18 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const [dragPrice, setDragPrice] = useState<number | null>(null);
   const boundsRef = useRef({ minPrice: 0, maxPrice: 1, chartHeight: 1, chartWidth: 1 });
 
+  // Format price utility based on asset magnitude
+  const formatPrice = useCallback((p: number) => {
+    if (!isFinite(p)) return '0.00';
+    if (p >= 500) return p.toFixed(2);
+    if (p >= 1) return p.toFixed(4);
+    return p.toFixed(5);
+  }, []);
+
   // Indicators calculation
   const ma20 = useMemo(() => {
     const period = 20;
-    return candles.map((c, idx, arr) => {
+    return candles.map((_, idx, arr) => {
       if (idx < period - 1) return null;
       let sum = 0;
       for (let i = 0; i < period; i++) {
@@ -69,7 +74,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const bollingerBands = useMemo(() => {
     const period = 20;
     const stdDevMultiplier = 2;
-    return candles.map((c, idx, arr) => {
+    return candles.map((_, idx, arr) => {
       if (idx < period - 1) return null;
       let sum = 0;
       for (let i = 0; i < period; i++) {
@@ -96,16 +101,31 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = canvas.width;
-    const height = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+
+    // Reset transform matrix to prevent cumulative scaling on re-renders
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Logical dimensions in CSS pixels
+    const width = canvas.width / dpr;
+    const height = canvas.height / dpr;
+
     ctx.clearRect(0, 0, width, height);
 
-    if (candles.length === 0) return;
+    if (width <= 0 || height <= 0) return;
 
-    const paddingRight = 65; // Price scale width
-    const paddingBottom = 26; // Time scale height
-    const chartWidth = width - paddingRight;
-    const chartHeight = height - paddingBottom;
+    if (!candles || candles.length === 0) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Loading ${symbol} market data...`, width / 2, height / 2);
+      return;
+    }
+
+    const paddingRight = 68; // Price scale width on right
+    const paddingBottom = 26; // Time scale height on bottom
+    const chartWidth = Math.max(10, width - paddingRight);
+    const chartHeight = Math.max(10, height - paddingBottom);
 
     // Calculate High & Low Price range
     let minPrice = Infinity;
@@ -118,11 +138,38 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       if (c.volume > maxVolume) maxVolume = c.volume;
     });
 
-    // Add 2% breathing margin on prices
-    const priceRange = maxPrice - minPrice || 1;
-    minPrice -= priceRange * 0.03;
-    maxPrice += priceRange * 0.03;
-    const visiblePriceRange = maxPrice - minPrice;
+    if (currentPrice > 0) {
+      if (currentPrice < minPrice) minPrice = currentPrice;
+      if (currentPrice > maxPrice) maxPrice = currentPrice;
+    }
+
+    if (openPosition) {
+      if (openPosition.entryPrice < minPrice) minPrice = openPosition.entryPrice;
+      if (openPosition.entryPrice > maxPrice) maxPrice = openPosition.entryPrice;
+      if (openPosition.stopLoss) {
+        if (openPosition.stopLoss < minPrice) minPrice = openPosition.stopLoss;
+        if (openPosition.stopLoss > maxPrice) maxPrice = openPosition.stopLoss;
+      }
+      if (openPosition.takeProfit) {
+        if (openPosition.takeProfit < minPrice) minPrice = openPosition.takeProfit;
+        if (openPosition.takeProfit > maxPrice) maxPrice = openPosition.takeProfit;
+      }
+      if (openPosition.liquidationPrice) {
+        if (openPosition.liquidationPrice < minPrice) minPrice = openPosition.liquidationPrice;
+        if (openPosition.liquidationPrice > maxPrice) maxPrice = openPosition.liquidationPrice;
+      }
+    }
+
+    if (!isFinite(minPrice) || !isFinite(maxPrice) || minPrice === maxPrice) {
+      minPrice = currentPrice > 0 ? currentPrice * 0.99 : 1;
+      maxPrice = currentPrice > 0 ? currentPrice * 1.01 : 2;
+    }
+
+    // Add breathing margin on prices
+    const priceRange = maxPrice - minPrice;
+    minPrice -= priceRange * 0.04;
+    maxPrice += priceRange * 0.04;
+    const visiblePriceRange = maxPrice - minPrice || 1;
     boundsRef.current = { minPrice, maxPrice, chartHeight, chartWidth };
 
     const priceToY = (price: number) => {
@@ -134,15 +181,15 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     };
 
     const candleCount = candles.length;
-    const candleWidth = Math.max(2, chartWidth / candleCount - 2);
     const candleSpacing = chartWidth / candleCount;
+    const candleWidth = Math.max(2, Math.min(candleSpacing - 2, 16));
 
     // 1. Draw Grid Lines
     ctx.strokeStyle = '#161e2a';
     ctx.lineWidth = 1;
     const gridRows = 6;
     for (let i = 0; i <= gridRows; i++) {
-      const y = (chartHeight / gridRows) * i;
+      const y = Math.round((chartHeight / gridRows) * i);
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(chartWidth, y);
@@ -153,31 +200,56 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       ctx.fillStyle = '#64748b';
       ctx.font = '10px monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(priceAtY.toFixed(priceAtY > 500 ? 2 : 5), chartWidth + 6, y + 3);
+      ctx.fillText(formatPrice(priceAtY), chartWidth + 6, y + 3);
     }
 
     const gridCols = 8;
     for (let i = 0; i <= gridCols; i++) {
-      const x = (chartWidth / gridCols) * i;
+      const x = Math.round((chartWidth / gridCols) * i);
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, chartHeight);
       ctx.stroke();
     }
 
-    // 2. Draw Volume Histogram
+    // Axis dividers
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(chartWidth, 0);
+    ctx.lineTo(chartWidth, chartHeight);
+    ctx.lineTo(0, chartHeight);
+    ctx.stroke();
+
+    // 2. Draw Time Labels on Bottom Axis
+    const timeCols = Math.min(6, candleCount);
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < timeCols; i++) {
+      const candleIdx = Math.floor((i / (timeCols - 1 || 1)) * (candleCount - 1));
+      const c = candles[candleIdx];
+      if (!c) continue;
+      const x = candleIdx * candleSpacing + candleSpacing / 2;
+      const d = new Date(c.timestamp);
+      const hours = d.getHours().toString().padStart(2, '0');
+      const mins = d.getMinutes().toString().padStart(2, '0');
+      ctx.fillText(`${hours}:${mins}`, x, chartHeight + 16);
+    }
+
+    // 3. Draw Volume Histogram
     if (showVolume && maxVolume > 0) {
-      const volumeHeight = chartHeight * 0.18;
+      const volumeHeight = chartHeight * 0.16;
       candles.forEach((c, i) => {
         const x = i * candleSpacing + candleSpacing / 2;
         const vHeight = (c.volume / maxVolume) * volumeHeight;
         const isUp = c.close >= c.open;
-        ctx.fillStyle = isUp ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)';
-        ctx.fillRect(x - candleWidth / 2, chartHeight - vHeight, candleWidth, vHeight);
+        ctx.fillStyle = isUp ? 'rgba(16, 185, 129, 0.22)' : 'rgba(244, 63, 94, 0.22)';
+        ctx.fillRect(Math.round(x - candleWidth / 2), Math.round(chartHeight - vHeight), Math.round(candleWidth), Math.round(vHeight));
       });
     }
 
-    // 3. Draw Bollinger Bands
+    // 4. Draw Bollinger Bands
     if (showBands) {
       ctx.beginPath();
       candles.forEach((_, i) => {
@@ -188,7 +260,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         if (i === 19) ctx.moveTo(x, yUpper);
         else ctx.lineTo(x, yUpper);
       });
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.45)';
       ctx.lineWidth = 1;
       ctx.stroke();
 
@@ -201,11 +273,11 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         if (i === 19) ctx.moveTo(x, yLower);
         else ctx.lineTo(x, yLower);
       });
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.45)';
       ctx.stroke();
     }
 
-    // 4. Draw Candlesticks / Line / Area
+    // 5. Draw Candlesticks / Line / Area
     if (chartType === 'candlestick') {
       candles.forEach((c, i) => {
         const x = i * candleSpacing + candleSpacing / 2;
@@ -221,14 +293,20 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
         // Wick
         ctx.beginPath();
-        ctx.moveTo(x, highY);
-        ctx.lineTo(x, lowY);
+        const midX = Math.round(x);
+        ctx.moveTo(midX, Math.round(highY));
+        ctx.lineTo(midX, Math.round(lowY));
         ctx.stroke();
 
         // Body
         const bodyTop = Math.min(openY, closeY);
         const bodyHeight = Math.max(1.5, Math.abs(openY - closeY));
-        ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+        ctx.fillRect(
+          Math.round(x - candleWidth / 2),
+          Math.round(bodyTop),
+          Math.round(candleWidth),
+          Math.round(bodyHeight)
+        );
       });
     } else {
       // Line or Area chart
@@ -265,7 +343,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       ctx.stroke();
     }
 
-    // 5. Draw MA(20) Line
+    // 6. Draw MA(20) Line
     if (showMa) {
       ctx.beginPath();
       let started = false;
@@ -286,28 +364,30 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       ctx.stroke();
     }
 
-    // 6. Draw Current Live Price Line & Tag
-    const currentY = priceToY(currentPrice);
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, currentY);
-    ctx.lineTo(chartWidth, currentY);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    // 7. Draw Current Live Price Line & Tag
+    if (currentPrice > 0) {
+      const currentY = Math.round(priceToY(currentPrice));
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, currentY);
+      ctx.lineTo(chartWidth, currentY);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-    // Live Price Pill on Axis
-    ctx.fillStyle = '#2563eb';
-    ctx.fillRect(chartWidth + 2, currentY - 10, paddingRight - 4, 20);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(currentPrice.toFixed(currentPrice > 500 ? 2 : 5), chartWidth + 6, currentY + 4);
+      // Live Price Pill on Axis
+      ctx.fillStyle = '#2563eb';
+      ctx.fillRect(chartWidth + 2, currentY - 10, paddingRight - 4, 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(formatPrice(currentPrice), chartWidth + 6, currentY + 4);
+    }
 
-    // 7. Draw Open Position Overlay (if exists)
+    // 8. Draw Open Position Overlay (if exists)
     if (openPosition) {
-      const entryY = priceToY(openPosition.entryPrice);
+      const entryY = Math.round(priceToY(openPosition.entryPrice));
       const isLong = openPosition.side === 'LONG';
       ctx.strokeStyle = isLong ? '#10b981' : '#f43f5e';
       ctx.lineWidth = 1.5;
@@ -322,14 +402,15 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       const pnl = openPosition.unrealizedPnl;
       const pnlText = `${isLong ? 'LONG' : 'SHORT'} ${openPosition.quantity} (${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})`;
       ctx.fillStyle = isLong ? 'rgba(16, 185, 129, 0.9)' : 'rgba(244, 63, 94, 0.9)';
-      ctx.fillRect(10, entryY - 11, ctx.measureText(pnlText).width + 14, 22);
+      const tagWidth = ctx.measureText(pnlText).width + 14;
+      ctx.fillRect(10, entryY - 11, tagWidth, 22);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 10px sans-serif';
       ctx.fillText(pnlText, 16, entryY + 4);
 
-      // Liquidation Price Line (Critical Margin Risk Level)
+      // Liquidation Price Line
       if (openPosition.liquidationPrice) {
-        const liqY = priceToY(openPosition.liquidationPrice);
+        const liqY = Math.round(priceToY(openPosition.liquidationPrice));
         ctx.strokeStyle = '#f59e0b';
         ctx.setLineDash([3, 3]);
         ctx.lineWidth = 1;
@@ -343,13 +424,13 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         ctx.fillRect(chartWidth - 110, liqY - 9, 105, 18);
         ctx.fillStyle = '#0f172a';
         ctx.font = 'bold 10px monospace';
-        ctx.fillText(`LIQ: ${openPosition.liquidationPrice.toFixed(openPosition.liquidationPrice > 500 ? 2 : 4)}`, chartWidth - 105, liqY + 4);
+        ctx.fillText(`LIQ: ${formatPrice(openPosition.liquidationPrice)}`, chartWidth - 105, liqY + 4);
       }
 
       // Stop Loss Handle Line (Draggable)
       const activeSl = dragTarget === 'SL' && dragPrice !== null ? dragPrice : openPosition.stopLoss;
       if (activeSl) {
-        const slY = priceToY(activeSl);
+        const slY = Math.round(priceToY(activeSl));
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = dragTarget === 'SL' ? 2 : 1;
         ctx.setLineDash([4, 2]);
@@ -363,13 +444,13 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         ctx.fillRect(chartWidth - 100, slY - 9, 95, 18);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
-        ctx.fillText(`SL: ${activeSl.toFixed(activeSl > 500 ? 2 : 5)} ↕`, chartWidth - 95, slY + 4);
+        ctx.fillText(`SL: ${formatPrice(activeSl)} ↕`, chartWidth - 95, slY + 4);
       }
 
       // Take Profit Handle Line (Draggable)
       const activeTp = dragTarget === 'TP' && dragPrice !== null ? dragPrice : openPosition.takeProfit;
       if (activeTp) {
-        const tpY = priceToY(activeTp);
+        const tpY = Math.round(priceToY(activeTp));
         ctx.strokeStyle = '#10b981';
         ctx.lineWidth = dragTarget === 'TP' ? 2 : 1;
         ctx.setLineDash([4, 2]);
@@ -383,13 +464,13 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         ctx.fillRect(chartWidth - 100, tpY - 9, 95, 18);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
-        ctx.fillText(`TP: ${activeTp.toFixed(activeTp > 500 ? 2 : 5)} ↕`, chartWidth - 95, tpY + 4);
+        ctx.fillText(`TP: ${formatPrice(activeTp)} ↕`, chartWidth - 95, tpY + 4);
       }
     }
 
-    // 8. Crosshair Cursor (if hover active)
+    // 9. Crosshair Cursor (if hover active)
     if (mousePos && mousePos.x < chartWidth && mousePos.y < chartHeight) {
-      ctx.strokeStyle = 'rgba(148, 163, 184, 0.5)';
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2]);
 
@@ -412,28 +493,44 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       ctx.fillRect(chartWidth + 2, mousePos.y - 9, paddingRight - 4, 18);
       ctx.fillStyle = '#f8fafc';
       ctx.font = '10px monospace';
-      ctx.fillText(hoverPrice.toFixed(hoverPrice > 500 ? 2 : 5), chartWidth + 6, mousePos.y + 4);
+      ctx.textAlign = 'left';
+      ctx.fillText(formatPrice(hoverPrice), chartWidth + 6, mousePos.y + 4);
     }
-  }, [candles, currentPrice, chartType, showMa, showBands, showVolume, mousePos, openPosition, ma20, bollingerBands]);
+  }, [candles, currentPrice, chartType, showMa, showBands, showVolume, mousePos, openPosition, ma20, bollingerBands, formatPrice, symbol]);
 
-  // Handle Resize
+  // Handle Resize via ResizeObserver on the canvas container
   useEffect(() => {
-    const handleResize = () => {
-      const container = containerRef.current;
-      const canvas = canvasRef.current;
-      if (!container || !canvas) return;
-      canvas.width = container.clientWidth * window.devicePixelRatio;
-      canvas.height = container.clientHeight * window.devicePixelRatio;
-      canvas.style.width = `${container.clientWidth}px`;
-      canvas.style.height = `${container.clientHeight}px`;
-      const ctx = canvas.getContext('2d');
-      if (ctx) ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    const container = canvasContainerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+
+    const updateSize = () => {
+      const rect = container.getBoundingClientRect();
+      const w = Math.floor(rect.width);
+      const h = Math.floor(rect.height);
+      if (w <= 0 || h <= 0) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const targetW = Math.floor(w * dpr);
+      const targetH = Math.floor(h * dpr);
+
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+      }
       drawChart();
     };
 
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const resizeObserver = new ResizeObserver(() => {
+      updateSize();
+    });
+
+    resizeObserver.observe(container);
+    updateSize();
+
+    return () => {
+      resizeObserver.disconnect();
+    };
   }, [drawChart]);
 
   // Redraw when state changes
@@ -529,6 +626,8 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     setMousePos(null);
   };
 
+  const lastCandle = candles && candles.length > 0 ? candles[candles.length - 1] : null;
+
   return (
     <div className="pane chart-pane" ref={containerRef}>
       {/* Top Chart Toolbar */}
@@ -602,7 +701,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       </div>
 
       {/* Chart Canvas */}
-      <div className="chart-canvas-container">
+      <div className="chart-canvas-container" ref={canvasContainerRef}>
         <canvas
           ref={canvasRef}
           className="chart-canvas"
@@ -614,13 +713,13 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
         {/* Floating Quick Price HUD */}
         <div className="chart-hud-overlay">
-          <span>O: {candles[candles.length - 1]?.open.toFixed(2) || '0.00'}</span>
-          <span>H: {candles[candles.length - 1]?.high.toFixed(2) || '0.00'}</span>
-          <span>L: {candles[candles.length - 1]?.low.toFixed(2) || '0.00'}</span>
-          <span>C: {candles[candles.length - 1]?.close.toFixed(2) || '0.00'}</span>
+          <span>O: {lastCandle ? formatPrice(lastCandle.open) : '0.00'}</span>
+          <span>H: {lastCandle ? formatPrice(lastCandle.high) : '0.00'}</span>
+          <span>L: {lastCandle ? formatPrice(lastCandle.low) : '0.00'}</span>
+          <span>C: {lastCandle ? formatPrice(lastCandle.close) : '0.00'}</span>
           {showMa && (
             <span style={{ color: '#f59e0b' }}>
-              MA: {ma20[ma20.length - 1]?.toFixed(2) || '0.00'}
+              MA: {ma20[ma20.length - 1] ? formatPrice(ma20[ma20.length - 1]!) : '0.00'}
             </span>
           )}
         </div>

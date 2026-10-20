@@ -1,7 +1,11 @@
 // Institutional Security & Authentication Engine (PBKDF2/HMAC-SHA256, JWT & RBAC)
+// With Persistent File-Backed Store to preserve accounts across server restarts
 
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { UserRole } from '@nexus/core';
+import { getPrismaClient, isDbConnected } from '../db/prisma.js';
 
 export interface UserSession {
   userId: string;
@@ -26,13 +30,62 @@ export class AuthService {
   private users: Map<string, UserRecord> = new Map(); // email -> UserRecord
   private sessions: Map<string, UserSession> = new Map(); // token -> UserSession
   private jwtSecret: string;
+  private dataFilePath: string;
 
   constructor() {
     this.jwtSecret = process.env.JWT_SECRET || 'nexus_super_secret_institutional_key_2026';
 
-    // Seed default admin and trader accounts
+    const possibleDir = path.resolve(process.cwd(), 'packages/server/data');
+    if (!fs.existsSync(possibleDir)) {
+      try {
+        fs.mkdirSync(possibleDir, { recursive: true });
+      } catch (_e) {}
+    }
+    this.dataFilePath = path.join(possibleDir, 'users.json');
+
+    // 1. Restore persisted users & sessions from disk if available
+    this.loadFromDisk();
+
+    // 2. Always ensure default seeded admin and trader accounts exist
     this.seedUser('admin@nexus.exchange', 'NexusAdmin2026!', 'ADMIN', 'acc_default');
     this.seedUser('trader@nexus.exchange', 'Trader2026!', 'TRADER', 'acc_trader_1');
+  }
+
+  private loadFromDisk(): void {
+    try {
+      if (fs.existsSync(this.dataFilePath)) {
+        const raw = fs.readFileSync(this.dataFilePath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed.users && Array.isArray(parsed.users)) {
+          for (const u of parsed.users) {
+            if (u && u.email) {
+              this.users.set(u.email.toLowerCase(), u);
+            }
+          }
+        }
+        if (parsed.sessions && Array.isArray(parsed.sessions)) {
+          const now = Date.now();
+          for (const s of parsed.sessions) {
+            if (s && s.token && s.expiresAt > now) {
+              this.sessions.set(s.token, s);
+            }
+          }
+        }
+      }
+    } catch (_err) {}
+  }
+
+  private saveToDisk(): void {
+    try {
+      const payload = {
+        users: Array.from(this.users.values()),
+        sessions: Array.from(this.sessions.entries()).map(([token, session]) => ({
+          token,
+          ...session,
+        })),
+      };
+      fs.writeFileSync(this.dataFilePath, JSON.stringify(payload, null, 2), 'utf8');
+    } catch (_err) {}
   }
 
   private hashPassword(password: string, salt: string): string {
@@ -40,19 +93,50 @@ export class AuthService {
   }
 
   private seedUser(email: string, pass: string, role: UserRole, accountId: string): void {
+    const normalized = email.toLowerCase();
+    if (this.users.has(normalized)) return;
+
     const salt = crypto.randomBytes(16).toString('hex');
     const passwordHash = this.hashPassword(pass, salt);
     const id = `usr_${email.split('@')[0]}_${Math.random().toString(36).substring(2, 6)}`;
 
-    this.users.set(email.toLowerCase(), {
+    this.users.set(normalized, {
       id,
-      email: email.toLowerCase(),
+      email: normalized,
       passwordHash,
       salt,
       role,
       accountId,
       createdAt: new Date().toISOString(),
     });
+    this.saveToDisk();
+  }
+
+  public async syncWithDatabase(): Promise<void> {
+    if (!isDbConnected()) return;
+    try {
+      const client = getPrismaClient();
+      const dbUsers = await client.user.findMany({ include: { accounts: true } });
+      for (const u of dbUsers) {
+        const [pHash, s] = u.passwordHash.includes(':') ? u.passwordHash.split(':') : [u.passwordHash, ''];
+        const accId = u.accounts[0]?.accountNumber || `acc_${u.id}`;
+        this.users.set(u.email.toLowerCase(), {
+          id: u.id,
+          email: u.email.toLowerCase(),
+          passwordHash: pHash,
+          salt: s,
+          role: u.role as UserRole,
+          accountId: accId,
+          createdAt: u.createdAt.toISOString(),
+        });
+      }
+      this.saveToDisk();
+      if (dbUsers.length > 0) {
+        console.log(`[DATABASE] Synced ${dbUsers.length} user accounts from Neon PostgreSQL!`);
+      }
+    } catch (err: any) {
+      console.warn('[DATABASE] Failed to sync users from DB:', err.message);
+    }
   }
 
   /**
@@ -85,6 +169,29 @@ export class AuthService {
 
     this.users.set(normalized, user);
     const token = this.generateToken(user);
+    this.saveToDisk();
+
+    // If PostgreSQL / Neon is connected, write to DB immediately!
+    if (isDbConnected()) {
+      const client = getPrismaClient();
+      client.user
+        .create({
+          data: {
+            id: userId,
+            email: normalized,
+            passwordHash: `${passwordHash}:${salt}`,
+            role: role as any,
+            accounts: {
+              create: {
+                accountNumber: accountId,
+                currency: 'USD',
+                environment: 'PAPER_TRADING',
+              },
+            },
+          },
+        })
+        .catch((e) => console.warn('[DATABASE] Async user sync error:', e.message));
+    }
 
     return {
       token,
@@ -119,7 +226,7 @@ export class AuthService {
     const user = this.users.get(normalized);
 
     if (!user) {
-      throw new Error('Invalid email or password');
+      throw new Error(`Account not found for "${normalized}". Please click the "Open Account" tab to register.`);
     }
 
     const testHash = this.hashPassword(pass, user.salt);
@@ -128,6 +235,7 @@ export class AuthService {
     }
 
     const token = this.generateToken(user);
+    this.saveToDisk();
 
     return {
       token,
@@ -150,6 +258,7 @@ export class AuthService {
 
     if (Date.now() > session.expiresAt) {
       this.sessions.delete(token);
+      this.saveToDisk();
       return null;
     }
 
@@ -158,6 +267,7 @@ export class AuthService {
 
   public logout(token: string): void {
     this.sessions.delete(token);
+    this.saveToDisk();
   }
 
   private generateToken(user: UserRecord): string {

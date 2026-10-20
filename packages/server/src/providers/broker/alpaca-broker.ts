@@ -24,23 +24,27 @@ export class AlpacaBrokerProvider implements BrokerProvider {
     this.apiKey = process.env.ALPACA_API_KEY || '';
     this.apiSecret = process.env.ALPACA_API_SECRET || '';
 
-    // Choose base URL based on environment mode
-    if (environment === 'LIVE') {
-      this.baseUrl = process.env.ALPACA_LIVE_URL || 'https://api.alpaca.markets/v2';
-    } else {
-      this.baseUrl = process.env.ALPACA_PAPER_URL || 'https://paper-api.alpaca.markets/v2';
-    }
+    // Choose base URL based on environment mode and normalize with /v2
+    const defaultUrl = environment === 'LIVE' ? 'https://api.alpaca.markets' : 'https://paper-api.alpaca.markets';
+    const rawUrl =
+      process.env.ALPACA_API_URL ||
+      (environment === 'LIVE' ? process.env.ALPACA_LIVE_URL : process.env.ALPACA_PAPER_URL) ||
+      defaultUrl;
+    this.baseUrl = rawUrl.endsWith('/v2') ? rawUrl : `${rawUrl.replace(/\/$/, '')}/v2`;
   }
 
-  public async initialize(credentials?: { apiKey?: string; apiSecret?: string; environment?: EnvironmentMode }): Promise<void> {
+  public async initialize(credentials?: { apiKey?: string; apiSecret?: string; environment?: EnvironmentMode; baseUrl?: string }): Promise<void> {
     if (credentials?.apiKey) this.apiKey = credentials.apiKey;
     if (credentials?.apiSecret) this.apiSecret = credentials.apiSecret;
     if (credentials?.environment) {
       this.environment = credentials.environment;
-      this.baseUrl =
-        credentials.environment === 'LIVE'
-          ? process.env.ALPACA_LIVE_URL || 'https://api.alpaca.markets/v2'
-          : process.env.ALPACA_PAPER_URL || 'https://paper-api.alpaca.markets/v2';
+      const defaultUrl = credentials.environment === 'LIVE' ? 'https://api.alpaca.markets' : 'https://paper-api.alpaca.markets';
+      const rawUrl =
+        credentials.baseUrl ||
+        process.env.ALPACA_API_URL ||
+        (credentials.environment === 'LIVE' ? process.env.ALPACA_LIVE_URL : process.env.ALPACA_PAPER_URL) ||
+        defaultUrl;
+      this.baseUrl = rawUrl.endsWith('/v2') ? rawUrl : `${rawUrl.replace(/\/$/, '')}/v2`;
     }
 
     this.isConnected = await this.testConnection();

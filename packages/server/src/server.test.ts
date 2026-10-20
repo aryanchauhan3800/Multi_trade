@@ -46,13 +46,14 @@ describe('Server Integration & OMS Test Suite', () => {
     });
 
     it('registers new trader and verifies issued token', () => {
-      const reg = authService.register('trader.unit.test@nexus.exchange', 'StrongPassword2026!');
+      const email = `trader.unit.test.${Date.now()}@nexus.exchange`;
+      const reg = authService.register(email, 'StrongPassword2026!');
       assert.ok(reg.token);
       assert.equal(reg.user.role, 'TRADER');
 
       const session = authService.verifyToken(reg.token);
       assert.ok(session);
-      assert.equal(session.email, 'trader.unit.test@nexus.exchange');
+      assert.equal(session.email, email);
     });
   });
 

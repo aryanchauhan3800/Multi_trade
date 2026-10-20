@@ -1,0 +1,60 @@
+{
+  "users": [
+    {
+      "id": "usr_admin_vy6k",
+      "email": "admin@nexus.exchange",
+      "passwordHash": "be97c6b187bd1ae3d64fb05f3f8efc167af6399dd33c03d3d5a62a4bc92156564e05b399cae65881a8686b8877735e3f5903dc079200db616e920634f2968a40",
+      "salt": "60ae51b8b2c1d749db01b5edfaeced58",
+      "role": "ADMIN",
+      "accountId": "acc_default",
+      "createdAt": "2026-10-20T22:21:59.626Z"
+    },
+    {
+      "id": "usr_trader_qhpm",
+      "email": "trader@nexus.exchange",
+      "passwordHash": "18c26289e08b653847cadaa86bcdcbd0fae3d57d093f2150e1c8409fc847fa23b68463acfba642283fee33e5675019a5dcb82ff36b9bc91eb2b2da8d234cc404",
+      "salt": "d82e6c2d788b9cf3e6f4fd5c6a6289dc",
+      "role": "TRADER",
+      "accountId": "acc_trader_1",
+      "createdAt": "2026-10-20T22:21:59.649Z"
+    },
+    {
+      "id": "usr_1792535007077_7m8b",
+      "email": "keerti@ayan.com",
+      "passwordHash": "e5a908e912e0a6d21d9876b9f95877b86cb6d592f4317f0ab4796374ebbe03bd5b893d0c71621c793afb3ecbc88a8de9be058a084ec2473ce0e402a89de0c77a",
+      "salt": "766e52863c2625b18b41ea538477fd71",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792535007077_7m8b",
+      "createdAt": "2026-10-20T22:23:27.077Z"
+    },
+    {
+      "id": "usr_1792535186124_xpjj",
+      "email": "aryan3800chauhan@gamil.com",
+      "passwordHash": "273a1b1b2e4a5f5dcbb7e22284c9991966c173cd171db7029e416e53c03ba791a1643b7ef03856f4e4f5243658148f4b224e1a62e01c7bb1fbb91fd6ee18a32e",
+      "salt": "e0b77345647d885e390dd52dbe6de49a",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792535186124_xpjj",
+      "createdAt": "2026-10-20T22:26:26.124Z"
+    },
+    {
+      "id": "usr_1792536125016_6f9l",
+      "email": "aryan380000chauhan@gmail.com",
+      "passwordHash": "0b03cceccad5e9efdb33c92917ca170cb60023a59741f16b385fd5a621c837f1e68a4867bf60d7ff711c27fe01d9a9f0113627cda0e624af15687b9def84d0ae",
+      "salt": "78ddcfafcf600ed17108f2aa69e5e37d",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792536125016_6f9l",
+      "createdAt": "2026-10-20T22:42:05.016Z"
+    }
+  ],
+  "sessions": [
+    {
+      "token": "nxt_49b0bfd69848b73b326f6d9e5c16259237d7ae280a8822c336a707ddb4059d7e",
+      "userId": "usr_trader_qhpm",
+      "email": "trader@nexus.exchange",
+      "role": "TRADER",
+      "accountId": "acc_trader_1",
+      "createdAt": 1792534936017,
+      "expiresAt": 1793139736017
+    }
+  ]
+}

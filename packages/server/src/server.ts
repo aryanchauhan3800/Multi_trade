@@ -1,6 +1,8 @@
 // Production Express & WebSocket Server with Order Engine & Broker Integration
 
 import http from 'http';
+import fs from 'fs';
+import path from 'path';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -10,6 +12,7 @@ import { BrokerRouter } from './providers/broker/broker-router.js';
 import { OrderEngine } from './engine/order-engine.js';
 import { PaymentGateway } from './providers/payment/payment-gateway.js';
 import { AuthService } from './auth/auth-service.js';
+import { initDatabaseConnection, isDbConnected } from './db/prisma.js';
 import { EnvironmentMode, PlatformMarketingData, AccountTierSpec } from '@nexus/core';
 
 dotenv.config();
@@ -59,9 +62,40 @@ const paymentGateway = new PaymentGateway();
 // 5. Initialize Security & Authentication Engine
 const authService = new AuthService();
 
-// 6. Create HTTP Server & WebSocket Gateway
+// 6. Connect to Neon / PostgreSQL Cloud Database
+initDatabaseConnection().then(async (connected) => {
+  if (connected) {
+    await authService.syncWithDatabase();
+  }
+});
+
+// 7. Create HTTP Server & WebSocket Gateway
 const server = http.createServer(app);
 const wsGateway = new MarketWebSocketGateway(server, marketData);
+
+// -------------------------------------------------------------
+// API ROOT & SYSTEM DISCOVERY
+// -------------------------------------------------------------
+app.get(['/', '/api', '/api/'], (_req: Request, res: Response) => {
+  res.json({
+    name: 'NEXUS EXCHANGE API Gateway',
+    status: 'ONLINE',
+    version: '1.0.0',
+    environment: envMode,
+    webTerminal: 'http://localhost:5173',
+    endpoints: {
+      health: '/api/health',
+      overview: '/api/admin/overview',
+      instruments: '/api/instruments',
+      tickers: '/api/markets/tickers',
+      accountSummary: '/api/account/summary',
+      openOrders: '/api/orders/open',
+      positions: '/api/positions',
+      brokerStatus: '/api/broker/status',
+      wsMarketGateway: `ws://localhost:${port}/ws/market`,
+    },
+  });
+});
 
 // -------------------------------------------------------------
 // AUTHENTICATION & IDENTITY ENDPOINTS
@@ -495,7 +529,7 @@ app.patch('/api/positions/:id', async (req: Request, res: Response) => {
 });
 
 // Account Financial Summary (Balance, Equity, Margin, Free Margin)
-app.get('/api/account/summary', (req: Request, res: Response) => {
+app.get('/api/account/summary', async (req: Request, res: Response) => {
   let accountId = 'acc_default';
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -504,7 +538,35 @@ app.get('/api/account/summary', (req: Request, res: Response) => {
       accountId = session.accountId;
     }
   }
-  res.json(orderEngine.getAccountBalance(accountId));
+
+  const internalSummary = orderEngine.getAccountBalance(accountId);
+
+  // If real broker (Alpaca) is connected, sync account numbers directly from broker telemetry
+  if (broker.isAlpacaConnected()) {
+    try {
+      const brokerStatus = await broker.getBrokerStatus();
+      if (brokerStatus.account) {
+        const liveEquity = parseFloat(brokerStatus.account.equity || brokerStatus.account.portfolio_value || '0');
+        const liveCash = parseFloat(brokerStatus.account.cash || '0');
+        const liveBuyingPower = parseFloat(brokerStatus.account.buying_power || '0');
+
+        return res.json({
+          totalBalance: liveCash > 0 ? liveCash : liveEquity || internalSummary.totalBalance,
+          equity: liveEquity > 0 ? liveEquity : internalSummary.equity,
+          usedMargin: internalSummary.usedMargin,
+          freeMargin: liveBuyingPower > 0 ? liveBuyingPower : liveCash || internalSummary.freeMargin,
+          marginLevel: internalSummary.marginLevel,
+          unrealizedPnl: internalSummary.unrealizedPnl,
+          currency: brokerStatus.account.currency || 'USD',
+          isRealBroker: true,
+          brokerName: brokerStatus.name,
+          accountNumber: brokerStatus.account.account_number,
+        });
+      }
+    } catch (_err) {}
+  }
+
+  res.json(internalSummary);
 });
 
 // Trade Execution History
@@ -597,6 +659,20 @@ app.post('/api/broker/config', async (req: Request, res: Response) => {
 
     const result = await broker.configureBroker({ apiKey, apiSecret, environment });
     if (result.success) {
+      // Auto-persist to .env so credentials survive future restarts
+      try {
+        const envPath = path.resolve(process.cwd(), '.env');
+        if (fs.existsSync(envPath)) {
+          let envContent = fs.readFileSync(envPath, 'utf8');
+          envContent = envContent.replace(/^ALPACA_API_KEY=.*/m, `ALPACA_API_KEY=${apiKey.trim()}`);
+          envContent = envContent.replace(/^ALPACA_API_SECRET=.*/m, `ALPACA_API_SECRET=${apiSecret.trim()}`);
+          if (environment) {
+            envContent = envContent.replace(/^ENVIRONMENT_MODE=.*/m, `ENVIRONMENT_MODE=${environment}`);
+          }
+          fs.writeFileSync(envPath, envContent, 'utf8');
+        }
+      } catch (_e) {}
+
       auditLogs.unshift({
         id: `aud_broker_${Date.now()}`,
         time: new Date().toLocaleTimeString(),

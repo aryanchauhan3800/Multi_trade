@@ -38,6 +38,10 @@ export class BrokerRouter implements BrokerProvider {
     return this.alpaca.isConnected || true;
   }
 
+  public isAlpacaConnected(): boolean {
+    return this.alpaca.isConnected;
+  }
+
   public async configureBroker(config: {
     apiKey: string;
     apiSecret: string;
