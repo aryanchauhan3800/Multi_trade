@@ -35,7 +35,11 @@ export class AuthService {
   constructor() {
     this.jwtSecret = process.env.JWT_SECRET || 'nexus_super_secret_institutional_key_2026';
 
-    const possibleDir = path.resolve(process.cwd(), 'packages/server/data');
+    const possibleDir = process.env.DATA_DIR
+      ? path.resolve(process.env.DATA_DIR)
+      : (process.cwd().endsWith('packages/server')
+          ? path.resolve(process.cwd(), 'data')
+          : path.resolve(process.cwd(), 'packages/server/data'));
     if (!fs.existsSync(possibleDir)) {
       try {
         fs.mkdirSync(possibleDir, { recursive: true });

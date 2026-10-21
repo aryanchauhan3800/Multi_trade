@@ -36,3 +36,16 @@ export async function initDatabaseConnection(): Promise<boolean> {
 export function isDbConnected(): boolean {
   return isConnected;
 }
+
+export async function closeDatabaseConnection(): Promise<void> {
+  if (prismaInstance) {
+    try {
+      await prismaInstance.$disconnect();
+    } catch (err: any) {
+      console.warn('[DATABASE] Disconnect error:', err.message);
+    } finally {
+      isConnected = false;
+      prismaInstance = null;
+    }
+  }
+}

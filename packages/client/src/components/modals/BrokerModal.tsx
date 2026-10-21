@@ -21,7 +21,9 @@ interface BrokerModalProps {
   onRefreshParent?: () => void;
 }
 
-const SERVER_BASE = 'http://localhost:4000';
+import { API_BASE_URL } from '../../config';
+
+const SERVER_BASE = API_BASE_URL;
 
 export const BrokerModal: React.FC<BrokerModalProps> = ({ onClose, onRefreshParent }) => {
   const [loading, setLoading] = useState<boolean>(true);

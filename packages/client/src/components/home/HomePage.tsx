@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TickerData, UserRole, PlatformMarketingData, AccountTierSpec } from '@nexus/core';
 import { AuthUser } from '../navigation/TopNav.js';
+import { API_BASE_URL } from '../../config';
 import './HomePage.css';
 import {
   Shield,
@@ -59,14 +60,14 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [tiers, setTiers] = useState<AccountTierSpec[]>([]);
 
   useEffect(() => {
-    fetch('http://localhost:4000/api/platform/marketing')
+    fetch(`${API_BASE_URL}/api/platform/marketing`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data) setMarketingData(data);
       })
       .catch(() => {});
 
-    fetch('http://localhost:4000/api/platform/account-tiers')
+    fetch(`${API_BASE_URL}/api/platform/account-tiers`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.tiers) setTiers(data.tiers);

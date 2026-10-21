@@ -12,16 +12,32 @@ import { BrokerRouter } from './providers/broker/broker-router.js';
 import { OrderEngine } from './engine/order-engine.js';
 import { PaymentGateway } from './providers/payment/payment-gateway.js';
 import { AuthService } from './auth/auth-service.js';
-import { initDatabaseConnection, isDbConnected } from './db/prisma.js';
+import { initDatabaseConnection, isDbConnected, closeDatabaseConnection } from './db/prisma.js';
 import { EnvironmentMode, PlatformMarketingData, AccountTierSpec } from '@nexus/core';
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 4000;
+const port = Number(process.env.PORT) || 4000;
+const host = process.env.HOST || '0.0.0.0';
 const envMode: EnvironmentMode = (process.env.ENVIRONMENT_MODE as EnvironmentMode) || 'PAPER_TRADING';
 
-app.use(cors({ origin: '*' }));
+const allowedOriginSetting = process.env.CORS_ORIGIN;
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || !allowedOriginSetting || allowedOriginSetting === '*') {
+        return callback(null, true);
+      }
+      const origins = allowedOriginSetting.split(',').map((o) => o.trim());
+      if (origins.includes(origin) || origins.includes('*')) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // 1. Initialize Market Data Layer
@@ -76,13 +92,19 @@ const wsGateway = new MarketWebSocketGateway(server, marketData);
 // -------------------------------------------------------------
 // API ROOT & SYSTEM DISCOVERY
 // -------------------------------------------------------------
-app.get(['/', '/api', '/api/'], (_req: Request, res: Response) => {
+app.get(['/', '/api', '/api/'], (req: Request, res: Response) => {
+  const hostHeader = req.headers.host || `${host}:${port}`;
+  const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+  const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
+  const publicBase = process.env.PUBLIC_URL || `${protocol}://${hostHeader}`;
+  const publicWsBase = process.env.PUBLIC_WS_URL || `${wsProtocol}://${hostHeader}`;
+
   res.json({
     name: 'NEXUS EXCHANGE API Gateway',
     status: 'ONLINE',
     version: '1.0.0',
     environment: envMode,
-    webTerminal: 'http://localhost:5173',
+    webTerminal: process.env.CLIENT_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
     endpoints: {
       health: '/api/health',
       overview: '/api/admin/overview',
@@ -92,7 +114,7 @@ app.get(['/', '/api', '/api/'], (_req: Request, res: Response) => {
       openOrders: '/api/orders/open',
       positions: '/api/positions',
       brokerStatus: '/api/broker/status',
-      wsMarketGateway: `ws://localhost:${port}/ws/market`,
+      wsMarketGateway: `${publicWsBase}/ws/market`,
     },
   });
 });
@@ -172,13 +194,15 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
 // REST API ENDPOINTS
 // -------------------------------------------------------------
 
-// System Health Probe
-app.get('/api/health', (_req: Request, res: Response) => {
+// System Health Probe (Render / Kubernetes compatible)
+app.get(['/api/health', '/healthz'], (_req: Request, res: Response) => {
   res.json({
     status: 'ONLINE',
+    uptimeSeconds: Math.floor(process.uptime()),
     environment: envMode,
     brokerConnected: broker.isConnected,
     marketDataConnected: marketData.isConnected,
+    databaseConnected: isDbConnected(),
     timestamp: Date.now(),
   });
 });
@@ -750,9 +774,40 @@ app.post('/api/admin/adjust-balance', (req: Request, res: Response) => {
 });
 
 // Start Server
-server.listen(port, () => {
-  console.log(`[NEXUS SERVER] Running on http://localhost:${port}`);
-  console.log(`[NEXUS SERVER] WebSocket Gateway available at ws://localhost:${port}/ws/market`);
+server.listen(port, host, () => {
+  console.log(`[NEXUS SERVER] Running on http://${host}:${port} (NODE_ENV: ${process.env.NODE_ENV || 'development'})`);
+  console.log(`[NEXUS SERVER] WebSocket Gateway available at ws://${host}:${port}/ws/market`);
 });
 
+// Graceful Shutdown for Cloud Environments (Render, Docker, Kubernetes)
+let isShuttingDown = false;
+const shutdown = (signal: string) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`[NEXUS SERVER] Received ${signal}. Initiating graceful shutdown...`);
+
+  server.close(async () => {
+    console.log('[NEXUS SERVER] HTTP server closed.');
+    try {
+      wsGateway.close();
+      await closeDatabaseConnection();
+      console.log('[NEXUS SERVER] All connections cleaned up. Exiting process.');
+      process.exit(0);
+    } catch (err) {
+      console.error('[NEXUS SERVER] Error during shutdown cleanup:', err);
+      process.exit(1);
+    }
+  });
+
+  // Force exit after 10 seconds if graceful shutdown does not complete
+  setTimeout(() => {
+    console.error('[NEXUS SERVER] Forcefully terminating process after 10s timeout.');
+    process.exit(1);
+  }, 10000).unref();
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 export { server, app, marketData, broker, orderEngine, wsGateway };
+

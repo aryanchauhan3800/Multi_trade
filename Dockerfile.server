@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Install native dependencies required by Prisma engine on Alpine
+RUN apk add --no-cache openssl libc6-compat
+
 # Copy root and package dependency manifests
 COPY package.json package-lock.json ./
 COPY packages/core/package.json ./packages/core/
@@ -12,12 +15,13 @@ COPY packages/server/prisma ./packages/server/prisma/
 # Install dependencies
 RUN npm ci
 
-# Copy source trees
-COPY tsconfig.base.json ./
+# Copy root TypeScript config and workspace source trees
+COPY tsconfig.json ./
 COPY packages/core ./packages/core
 COPY packages/server ./packages/server
 
-# Build core and server
+# Generate Prisma Client & compile TypeScript packages
+RUN npx prisma generate --schema=packages/server/prisma/schema.prisma
 RUN npm run build --workspace=@nexus/core
 RUN npm run build --workspace=@nexus/server
 
@@ -26,19 +30,28 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
-ENV PORT=4000
+ENV PORT=10000
+ENV HOST=0.0.0.0
 
-# Copy runtime assets and built code
+# Install runtime libraries for Prisma query engine
+RUN apk add --no-cache openssl libc6-compat
+
+# Copy root and package manifests
 COPY package.json package-lock.json ./
 COPY packages/core/package.json ./packages/core/
 COPY packages/server/package.json ./packages/server/
+
+# Copy compiled artifacts from builder
 COPY --from=builder /app/packages/core/dist ./packages/core/dist
 COPY --from=builder /app/packages/server/dist ./packages/server/dist
 COPY packages/server/prisma ./packages/server/prisma
 
-# Install production dependencies only
-RUN npm ci --omit=dev
+# Copy fully-resolved node_modules including generated Prisma client
+COPY --from=builder /app/node_modules ./node_modules
 
-EXPOSE 4000
+EXPOSE 10000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:${PORT:-10000}/api/health || exit 1
 
 CMD ["node", "packages/server/dist/server.js"]

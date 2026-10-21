@@ -22,6 +22,7 @@ export class MarketWebSocketGateway {
   // Channel to active provider unsubscribe callbacks
   private providerUnsubscribes: Map<WebSocketChannel, () => void> = new Map();
   private channelSubscribers: Map<WebSocketChannel, Set<WebSocket>> = new Map();
+  private heartbeatInterval: NodeJS.Timeout;
 
   constructor(server: HttpServer, private marketData: MarketDataProvider) {
     this.wss = new WebSocketServer({
@@ -34,9 +35,29 @@ export class MarketWebSocketGateway {
     });
 
     // Heartbeat check every 30s
-    setInterval(() => {
+    this.heartbeatInterval = setInterval(() => {
       this.pingClients();
     }, 30000);
+  }
+
+  public close(): void {
+    clearInterval(this.heartbeatInterval);
+    for (const [ws] of this.clients.entries()) {
+      try {
+        ws.close(1001, 'Server shutting down');
+      } catch (_e) {}
+    }
+    this.clients.clear();
+    this.providerUnsubscribes.forEach((unsub) => {
+      try {
+        unsub();
+      } catch (_e) {}
+    });
+    this.providerUnsubscribes.clear();
+    this.channelSubscribers.clear();
+    try {
+      this.wss.close();
+    } catch (_e) {}
   }
 
   private handleConnection(ws: WebSocket): void {

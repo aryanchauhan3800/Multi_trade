@@ -154,7 +154,13 @@ Access points:
 
 ---
 
+## 🚀 Cloud Deployment (Render)
+
+The backend is fully configured for zero-downtime deployment on Render using either the 1-Click Blueprint ([render.yaml](file:///Users/aryanchauhan/Developer/XNESS/render.yaml)) or standard Web Service dashboard setup. See the detailed walkthrough in [RENDER-DEPLOYMENT-GUIDE.md](file:///Users/aryanchauhan/Developer/XNESS/docs/RENDER-DEPLOYMENT-GUIDE.md).
+
+---
+
 ## 📜 License
 Original proprietary software engineered for the Nexus Exchange project.
 All trademarks and brand names referenced in public architecture docs belong to their respective owners.
-# Multi_trade
+

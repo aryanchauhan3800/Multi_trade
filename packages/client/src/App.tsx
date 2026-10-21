@@ -35,8 +35,9 @@ interface AuditItem {
   status: 'SUCCESS' | 'WARNING' | 'ERROR';
 }
 
-const SERVER_BASE = 'http://localhost:4000';
-const WS_BASE = 'ws://localhost:4000/ws/market';
+import { API_BASE_URL, WS_BASE_URL } from './config';
+const SERVER_BASE = API_BASE_URL;
+const WS_BASE = WS_BASE_URL;
 
 export const App: React.FC = () => {
   // Theme State

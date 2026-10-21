@@ -44,6 +44,33 @@
       "role": "TRADER",
       "accountId": "acc_usr_1792536125016_6f9l",
       "createdAt": "2026-10-20T22:42:05.016Z"
+    },
+    {
+      "id": "usr_1792569752958_r6kw",
+      "email": "trader.unit.test.1792569752935@nexus.exchange",
+      "passwordHash": "3c050a48f86dcd20448a0f7d4de5edd6c6d75b8b0d7dd0603fdb653c8b381e0b58fe662d7e3d4d857ad3e566f1f316ff107e41ababb485d5a8fdfbb9808cf1af",
+      "salt": "098a39fc3b9eaa1c37476e8205fd156c",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792569752958_r6kw",
+      "createdAt": "2026-10-21T08:02:32.958Z"
+    },
+    {
+      "id": "usr_1792569970724_ttst",
+      "email": "trader.unit.test.1792569970701@nexus.exchange",
+      "passwordHash": "5c53a8e060645601dfb0e0586de6ba22b8ffb48bc87a6969a5a39dd665bb60a4014d7e8138cc51c27210f60f2edc0c0561b840f40195efc922efcaa0431e3b01",
+      "salt": "7f65e4e8fdbac32570efe779033274df",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792569970724_ttst",
+      "createdAt": "2026-10-21T08:06:10.724Z"
+    },
+    {
+      "id": "usr_1792570018873_r1y5",
+      "email": "trader.unit.test.1792570018850@nexus.exchange",
+      "passwordHash": "e937898f050153a374cb20db1d3697f37077973d9c0189cfdfd26fd75805f58519a90632b88579b6f0aef1758e2466ead8ed73df1549cfcc6a7eb4de849a60ec",
+      "salt": "b6384d7395f74a84cd19718f0c9d54f6",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792570018873_r1y5",
+      "createdAt": "2026-10-21T08:06:58.873Z"
     }
   ],
   "sessions": [
@@ -55,6 +82,60 @@
       "accountId": "acc_trader_1",
       "createdAt": 1792534936017,
       "expiresAt": 1793139736017
+    },
+    {
+      "token": "nxt_e8d8e291123ebd65007e522bdd3e5ebfb303ed47c3a03254026c0f3b44df3488",
+      "userId": "usr_admin_vy6k",
+      "email": "admin@nexus.exchange",
+      "role": "ADMIN",
+      "accountId": "acc_default",
+      "createdAt": 1792569752907,
+      "expiresAt": 1793174552907
+    },
+    {
+      "token": "nxt_59b4a8f4271c698f5b6eae71c4cd22b40f8f11619fe8a326b18beaca8787a34f",
+      "userId": "usr_1792569752958_r6kw",
+      "email": "trader.unit.test.1792569752935@nexus.exchange",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792569752958_r6kw",
+      "createdAt": 1792569752958,
+      "expiresAt": 1793174552958
+    },
+    {
+      "token": "nxt_0039f1b2f4c97a9c286ea7fb193a61ed7ba97750da3dfb52f6ec3f37b310da81",
+      "userId": "usr_admin_vy6k",
+      "email": "admin@nexus.exchange",
+      "role": "ADMIN",
+      "accountId": "acc_default",
+      "createdAt": 1792569970671,
+      "expiresAt": 1793174770671
+    },
+    {
+      "token": "nxt_e245a24b3591449bb0f53b41c9e43c8a911646688b695c64b42badc38d321bd9",
+      "userId": "usr_1792569970724_ttst",
+      "email": "trader.unit.test.1792569970701@nexus.exchange",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792569970724_ttst",
+      "createdAt": 1792569970725,
+      "expiresAt": 1793174770725
+    },
+    {
+      "token": "nxt_45a5eb231840f226d9623e1aa70f850a6c4d44abdb46c08660ca8b7a6640f25b",
+      "userId": "usr_admin_vy6k",
+      "email": "admin@nexus.exchange",
+      "role": "ADMIN",
+      "accountId": "acc_default",
+      "createdAt": 1792570018821,
+      "expiresAt": 1793174818821
+    },
+    {
+      "token": "nxt_e39e36f2911aad8caea38a070ef7977cc7cb4828b58cc53d7ee61f85d082a074",
+      "userId": "usr_1792570018873_r1y5",
+      "email": "trader.unit.test.1792570018850@nexus.exchange",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792570018873_r1y5",
+      "createdAt": 1792570018873,
+      "expiresAt": 1793174818873
     }
   ]
 }

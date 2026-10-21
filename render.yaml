@@ -1,0 +1,67 @@
+# Render Infrastructure as Code Blueprint
+# https://render.com/docs/blueprint-spec
+
+version: "1"
+
+services:
+  # ---------------------------------------------------------------------------
+  # BACKEND WEB SERVICE (API Gateway & WebSocket Server)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: nexus-exchange-backend
+    runtime: node
+    plan: starter # Change to 'free' or other tiers as needed
+    region: oregon
+    buildCommand: npm run build:server
+    preDeployCommand: npm run db:deploy
+    startCommand: npm run start:server
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: ENVIRONMENT_MODE
+        value: PAPER_TRADING
+      - key: CORS_ORIGIN
+        value: '*'
+      # Auto-generated high-entropy cryptographic secrets
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COOKIE_SECRET
+        generateValue: true
+      # Database connection (automatically wired to the managed PostgreSQL below)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexus-postgres
+          property: connectionString
+      # Optional external exchange & broker integrations
+      - key: BINANCE_API_KEY
+        sync: false
+      - key: BINANCE_API_SECRET
+        sync: false
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_API_SECRET
+        sync: false
+      - key: ALPACA_API_URL
+        value: https://paper-api.alpaca.markets
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: COINBASE_COMMERCE_API_KEY
+        sync: false
+
+# ---------------------------------------------------------------------------
+# MANAGED POSTGRESQL DATABASE
+# ---------------------------------------------------------------------------
+databases:
+  - name: nexus-postgres
+    databaseName: nexus_trading
+    user: nexus_admin
+    plan: free # or starter
+    region: oregon

@@ -12,7 +12,7 @@ COPY packages/client/package.json ./packages/client/
 RUN npm ci
 
 # Copy source trees
-COPY tsconfig.base.json ./
+COPY tsconfig.json ./
 COPY packages/core ./packages/core
 COPY packages/client ./packages/client
 

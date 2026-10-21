@@ -1,0 +1,145 @@
+# Render Production Deployment Guide for Nexus Exchange Backend
+
+This guide outlines the production adaptations implemented in the codebase and provides step-by-step instructions for hosting the backend on [Render](https://render.com).
+
+---
+
+## 1. What Changes Were Made to Make the Code Production-Ready
+
+1. **Infrastructure as Code Blueprint (`render.yaml`)**:
+   - Added automated Render Blueprint configuration specifying the web service, Node runtime, auto-deployments, database linkages, pre-deploy migrations, and health check routes.
+
+2. **Server Port & Host Binding**:
+   - Updated [packages/server/src/server.ts](file:///Users/aryanchauhan/Developer/XNESS/packages/server/src/server.ts) to bind explicitly to `HOST=0.0.0.0` and dynamic `PORT` (Render defaults to `10000`). This ensures the reverse proxy routes traffic properly to the container.
+
+3. **Dynamic CORS Configuration**:
+   - Added support for `CORS_ORIGIN` environment variables, handling wildcard `*` or comma-separated allowed origins (e.g., your Vercel/Render frontend domain) while safely supporting credentials and headers.
+
+4. **Health Check Probes**:
+   - Added `/api/health` and `/healthz` endpoints reporting server status, process uptime, broker connectivity, market data streaming status, and PostgreSQL database connection state for zero-downtime health probing.
+
+5. **Graceful Shutdown**:
+   - Implemented `SIGTERM` and `SIGINT` handlers that close incoming HTTP connections, disconnect all active WebSocket sessions, and cleanly terminate Prisma database pools before process termination.
+
+6. **Prisma & Monorepo Build Scripts**:
+   - Added `build:server`, `start:server`, and `db:deploy` to root [package.json](file:///Users/aryanchauhan/Developer/XNESS/package.json).
+   - Moved `prisma` into production dependencies in [packages/server/package.json](file:///Users/aryanchauhan/Developer/XNESS/packages/server/package.json) so the schema engine is available during build and deployment.
+
+7. **Docker Container Hardening**:
+   - Fixed missing `tsconfig.json` references in [Dockerfile.server](file:///Users/aryanchauhan/Developer/XNESS/Dockerfile.server).
+   - Added Alpine runtime libraries (`openssl`, `libc6-compat`) necessary for Prisma query engines.
+   - Built a deterministic multi-stage build that generates Prisma clients prior to compilation.
+
+8. **Frontend Integration (`config.ts`)**:
+   - Created [packages/client/src/config.ts](file:///Users/aryanchauhan/Developer/XNESS/packages/client/src/config.ts) and typed environment declarations in [packages/client/src/vite-env.d.ts](file:///Users/aryanchauhan/Developer/XNESS/packages/client/src/vite-env.d.ts).
+   - The frontend automatically switches to `VITE_API_URL` and `VITE_WS_URL` when configured, or auto-detects the host in production.
+
+---
+
+## 2. Deployment Instructions (Two Options)
+
+### Option A: 1-Click Deployment via Render Blueprint (Recommended)
+
+1. Push your repository to **GitHub** or **GitLab**.
+2. Log into your [Render Dashboard](https://dashboard.render.com/).
+3. In the top navigation, click **New +** and select **Blueprint**.
+4. Connect your repository (`Multi_trade` / `XNESS`).
+5. Render will automatically detect the [render.yaml](file:///Users/aryanchauhan/Developer/XNESS/render.yaml) file and display the planned resources:
+   - **`nexus-exchange-backend`** (Web Service)
+   - **`nexus-postgres`** (Managed PostgreSQL Database)
+6. Click **Apply Blueprint**.
+7. Render will provision the database, generate cryptographic keys for `JWT_SECRET` and `COOKIE_SECRET`, run `npm run db:deploy`, and start the backend service.
+
+---
+
+### Option B: Manual Web Service Setup via Render Dashboard
+
+If you prefer to configure the service manually or already have a PostgreSQL database (e.g., Neon, Supabase):
+
+1. **Create Web Service**:
+   - On the Render dashboard, click **New +** -> **Web Service**.
+   - Select your Git repository.
+
+2. **Configure Service Settings**:
+   - **Name**: `nexus-backend` (or your preferred name)
+   - **Region**: Choose the region closest to your users (e.g., `Oregon (US West)` or `Frankfurt (EU)`)
+   - **Branch**: `main` (or your working branch)
+   - **Root Directory**: Leave blank (monorepo root)
+   - **Runtime**: `Node`
+   - **Build Command**:
+     ```bash
+     npm run build:server
+     ```
+   - **Pre-Deploy Command** (under Advanced):
+     ```bash
+     npm run db:deploy
+     ```
+   - **Start Command**:
+     ```bash
+     npm run start:server
+     ```
+
+3. **Configure Environment Variables**:
+   Under the **Environment** tab, add the following key-value pairs:
+
+   | Key | Value | Description |
+   |---|---|---|
+   | `NODE_ENV` | `production` | Enables production optimizations |
+   | `PORT` | `10000` | Port assigned by Render |
+   | `HOST` | `0.0.0.0` | Binds to all network interfaces |
+   | `ENVIRONMENT_MODE` | `PAPER_TRADING` | `PAPER_TRADING` or `LIVE` |
+   | `CORS_ORIGIN` | `*` | Or your client URL: `https://your-frontend.onrender.com` |
+   | `DATABASE_URL` | `postgresql://...` | Connection string to your PostgreSQL database |
+   | `JWT_SECRET` | *(Random 32+ character string)* | Signs session JWT tokens |
+   | `COOKIE_SECRET` | *(Random 32+ character string)* | Session signing secret |
+
+   *(Optional Broker & Payment keys)*:
+   - `BINANCE_API_KEY` & `BINANCE_API_SECRET`
+   - `ALPACA_API_KEY` & `ALPACA_API_SECRET`
+   - `STRIPE_SECRET_KEY` & `STRIPE_WEBHOOK_SECRET`
+
+4. **Health Check Path**:
+   - Under **Advanced Settings**, set **Health Check Path** to `/api/health`.
+
+5. **Deploy**:
+   - Click **Create Web Service**.
+
+---
+
+## 3. Verifying Your Deployment
+
+Once Render finishes deploying:
+
+1. **Verify HTTP API**:
+   Open `https://<your-service-name>.onrender.com/api/health` in your browser. You should receive:
+   ```json
+   {
+     "status": "ONLINE",
+     "uptimeSeconds": 14,
+     "environment": "PAPER_TRADING",
+     "brokerConnected": true,
+     "marketDataConnected": true,
+     "databaseConnected": true,
+     "timestamp": 1729500000000
+   }
+   ```
+
+2. **Verify API Root**:
+   Visiting `https://<your-service-name>.onrender.com/` shows system discovery info, available endpoints, and the active WebSocket gateway URL.
+
+3. **Verify WebSocket Stream**:
+   The market WebSocket gateway is active at:
+   `wss://<your-service-name>.onrender.com/ws/market`
+
+---
+
+## 4. Connecting Your Frontend Client
+
+When you deploy your client frontend (e.g., to Vercel, Netlify, or Render Static Site), set these environment variables:
+
+```env
+VITE_API_URL=https://<your-service-name>.onrender.com
+VITE_WS_URL=wss://<your-service-name>.onrender.com/ws/market
+```
+
+The client will automatically route all authentication, order placement, margin checks, and live price streams to your Render backend.

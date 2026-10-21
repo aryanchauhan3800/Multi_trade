@@ -8,7 +8,9 @@ interface DepositModalProps {
   onWithdrawSuccess: (amount: number, method: string) => void;
 }
 
-const SERVER_BASE = 'http://localhost:4000';
+import { API_BASE_URL } from '../../config';
+
+const SERVER_BASE = API_BASE_URL;
 
 export const DepositModal: React.FC<DepositModalProps> = ({
   balance,
