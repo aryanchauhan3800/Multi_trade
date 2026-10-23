@@ -13,8 +13,14 @@ import {
   UserPlus,
   ShieldCheck,
   CheckCircle2,
-  RefreshCw,
   Home,
+  TrendingUp,
+  BarChart2,
+  Briefcase,
+  Activity,
+  MoreHorizontal,
+  Search,
+  Bell,
   Cpu,
 } from 'lucide-react';
 
@@ -44,6 +50,8 @@ interface TopNavProps {
   onGoHome?: () => void;
   onOpenBroker?: () => void;
   brokerName?: string;
+  activeNavTab?: string;
+  onSelectNavTab?: (tab: string) => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -65,10 +73,14 @@ export const TopNav: React.FC<TopNavProps> = ({
   onGoHome,
   onOpenBroker,
   brokerName,
+  activeNavTab = 'trading',
+  onSelectNavTab,
 }) => {
-  const quickTapeSymbols = ['BTCUSD', 'EURUSD', 'XAUUSD'];
   const [profileOpen, setProfileOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
 
   // Close profile dropdown on outside click
   useEffect(() => {
@@ -76,60 +88,44 @@ export const TopNav: React.FC<TopNavProps> = ({
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
       }
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
     };
-    if (profileOpen) {
-      document.addEventListener('mousedown', handleOutsideClick);
-    }
+    document.addEventListener('mousedown', handleOutsideClick);
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
     };
-  }, [profileOpen]);
+  }, []);
 
-  const getEnvBadgeClass = () => {
-    switch (environment) {
-      case 'LIVE':
-        return 'env-live';
-      case 'PAPER_TRADING':
-        return 'env-paper';
-      case 'DEVELOPMENT':
-      default:
-        return 'env-dev';
+  const getUsername = () => {
+    if (currentUser?.email) {
+      return currentUser.email.split('@')[0];
     }
+    return 'aryan3800cha';
   };
 
-  const getEnvLabel = () => {
-    switch (environment) {
-      case 'LIVE':
-        return 'LIVE TRADING';
-      case 'PAPER_TRADING':
-        return 'PAPER TRADING';
-      case 'DEVELOPMENT':
-        return 'DEVELOPMENT';
+  const getInitials = () => {
+    if (currentUser?.email) {
+      const parts = currentUser.email.split('@')[0];
+      return parts.substring(0, 2).toUpperCase();
     }
+    return 'AR';
   };
 
-  const getRoleColor = (role: UserRole) => {
-    switch (role) {
-      case 'ADMIN':
-        return '#8b5cf6';
-      case 'SUPPORT':
-        return '#10b981';
-      case 'TRADER':
-      default:
-        return 'var(--accent-primary)';
-    }
-  };
-
-  const getInitials = (email: string) => {
-    if (!email) return 'NX';
-    const parts = email.split('@')[0];
-    return parts.substring(0, 2).toUpperCase();
-  };
+  const navLinks = [
+    { id: 'home', label: 'Home', icon: Home, action: onGoHome },
+    { id: 'trading', label: 'Trading', icon: TrendingUp },
+    { id: 'markets', label: 'Markets', icon: BarChart2 },
+    { id: 'portfolio', label: 'Portfolio', icon: Briefcase, action: onOpenPortfolio },
+    { id: 'analytics', label: 'Analytics', icon: Activity },
+  ];
 
   return (
     <header className="top-nav">
-      {/* Brand & Environment */}
+      {/* Left: Brand & Navigation Links */}
       <div className="nav-left">
+        {/* Brand Logo */}
         <div
           className="brand-badge"
           onClick={onGoHome}
@@ -137,127 +133,125 @@ export const TopNav: React.FC<TopNavProps> = ({
           title={onGoHome ? 'Return to Nexus Home' : undefined}
         >
           <div className="brand-logo-icon">N</div>
-          <span>NEXUS</span>
+          <span className="brand-title">NEXUS</span>
         </div>
 
-        {onGoHome && (
-          <button
-            className="btn-secondary"
-            onClick={onGoHome}
-            style={{ fontSize: 11, padding: '3px 8px', gap: 4 }}
-            title="Return to Home Page"
-          >
-            <Home size={12} />
-            <span>Home</span>
-          </button>
-        )}
-
-        {/* Environment Mode Switcher */}
-        <div
-          className={`environment-pill ${getEnvBadgeClass()}`}
-          onClick={() => {
-            const next: EnvironmentMode =
-              environment === 'PAPER_TRADING'
-                ? 'LIVE'
-                : environment === 'LIVE'
-                ? 'DEVELOPMENT'
-                : 'PAPER_TRADING';
-            onChangeEnvironment(next);
-          }}
-          title="Click to switch trading environment"
-        >
-          <span className="env-dot"></span>
-          <span>{getEnvLabel()}</span>
-          <ChevronDown size={11} />
-        </div>
-
-        {/* Real Broker Execution Gateway Pill */}
-        <div
-          className="environment-pill"
-          style={{
-            background: 'rgba(16, 185, 129, 0.12)',
-            color: '#10b981',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
-            cursor: 'pointer',
-          }}
-          onClick={onOpenBroker}
-          title="Click to configure Real Broker Execution (Alpaca Markets v2 / Live STP)"
-        >
-          <span className="env-dot" style={{ background: '#10b981' }}></span>
-          <span>{brokerName || 'REAL BROKER: ALPACA / STP'}</span>
-          <Cpu size={11} />
-        </div>
-
-        {/* Ticker Tape */}
-        <div className="nav-ticker-tape">
-          {quickTapeSymbols.map((sym) => {
-            const ticker = tickers.get(sym);
-            if (!ticker) return null;
-            const isPositive = ticker.change24h >= 0;
-
+        {/* Primary Navigation Links */}
+        <nav className="nav-primary-links">
+          {navLinks.map((link) => {
+            const Icon = link.icon;
+            const isActive = activeNavTab === link.id;
             return (
-              <div
-                key={sym}
-                className="ticker-tape-item"
-                onClick={() => onSelectSymbol(sym)}
-                title={`Click to open ${sym} chart`}
+              <button
+                key={link.id}
+                className={`top-nav-link ${isActive ? 'active' : ''}`}
+                onClick={() => {
+                  if (link.action) {
+                    link.action();
+                  } else if (onSelectNavTab) {
+                    onSelectNavTab(link.id);
+                  }
+                }}
               >
-                <span className="ticker-tape-symbol">{sym}</span>
-                <span className="ticker-tape-price num">
-                  ${ticker.lastPrice.toFixed(ticker.lastPrice > 500 ? 2 : 4)}
-                </span>
-                <span
-                  className="ticker-tape-change num"
-                  style={{ color: isPositive ? 'var(--trade-buy)' : 'var(--trade-sell)' }}
-                >
-                  {isPositive ? '+' : ''}
-                  {ticker.change24h.toFixed(2)}%
-                </span>
-              </div>
+                <Icon size={14} />
+                <span>{link.label}</span>
+              </button>
             );
           })}
+
+          {/* ... More Dropdown */}
+          <div className="nav-more-container" ref={moreRef}>
+            <button
+              className="top-nav-link"
+              onClick={() => setMoreMenuOpen((prev) => !prev)}
+            >
+              <MoreHorizontal size={14} />
+              <span>More</span>
+            </button>
+
+            {moreMenuOpen && (
+              <div className="nav-more-dropdown">
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    onOpenBroker?.();
+                  }}
+                >
+                  <Cpu size={14} />
+                  <span>Broker Execution Gateway</span>
+                </button>
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    onOpenAdmin();
+                  }}
+                >
+                  <Shield size={14} />
+                  <span>Admin Risk Console</span>
+                </button>
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    onChangeEnvironment(environment === 'LIVE' ? 'PAPER_TRADING' : 'LIVE');
+                  }}
+                >
+                  <span className="env-dot" style={{ background: environment === 'LIVE' ? '#10b981' : '#f59e0b' }}></span>
+                  <span>Mode: {environment === 'LIVE' ? 'Live Real Money' : 'Paper Trading'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </nav>
+      </div>
+
+      {/* Center: Search Symbols, Pairs, or Markets */}
+      <div className="nav-center-search">
+        <div className="top-search-bar">
+          <Search size={14} className="top-search-icon" />
+          <input
+            type="text"
+            className="top-search-input"
+            placeholder="Search symbols, pairs, or markets..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <kbd className="search-shortcut-badge">⌘ K</kbd>
         </div>
       </div>
 
-      {/* Account HUD & Actions */}
+      {/* Right: Theme Toggle, Notifications & Profile */}
       <div className="nav-right">
-        {/* Account Balance HUD */}
-        <div className="account-hud">
-          <div className="hud-stat">
-            <span className="hud-label">Balance</span>
-            <span className="hud-value">${accountBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-          </div>
-          <div className="hud-stat" style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: 12 }}>
-            <span className="hud-label">Equity</span>
-            <span className="hud-value" style={{ color: equity >= accountBalance ? 'var(--trade-buy)' : 'var(--trade-sell)' }}>
-              ${equity.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </span>
-          </div>
+        {/* Live Real Money Status Pill (Subtle & Clean) */}
+        <div
+          className="live-status-pill"
+          onClick={onOpenBroker}
+          title="Direct Institutional STP / Alpaca Live Gateway"
+        >
+          <span className="env-dot" style={{ background: environment === 'LIVE' ? '#10b981' : '#f59e0b' }}></span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: environment === 'LIVE' ? 'var(--trade-buy)' : '#f59e0b' }}>
+            {environment === 'LIVE' ? 'LIVE' : 'PAPER'}
+          </span>
         </div>
 
-        {/* Deposit Funds CTA */}
-        <button className="btn-primary" onClick={onOpenDeposit} title="Deposit & Custody Gateway">
-          <Wallet size={14} /> Deposit
+        {/* Theme Toggle Button */}
+        <button
+          className="btn-icon"
+          onClick={onToggleTheme}
+          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {theme === 'dark' ? <Sun size={16} /> : <Sun size={16} />}
         </button>
 
-        {/* Portfolio Button */}
-        <button className="btn-icon" onClick={onOpenPortfolio} title="Portfolio Analytics">
-          <PieChart size={15} />
+        {/* Notifications Bell */}
+        <button className="btn-icon nav-bell-btn" title="System Alerts & Execution Notifications">
+          <Bell size={16} />
+          <span className="bell-badge-dot"></span>
         </button>
 
-        {/* Admin Console (If Admin) */}
-        {userRole === 'ADMIN' && (
-          <button className="btn-icon" onClick={onOpenAdmin} title="Admin Risk Console" style={{ color: '#8b5cf6' }}>
-            <Shield size={15} />
-          </button>
-        )}
-
-        {/* Theme Switcher */}
-        <button className="btn-icon" onClick={onToggleTheme} title="Toggle Theme">
-          {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-        </button>
-
-        {/* Authentication & User Profile Hub */}
+        {/* User Profile Hub */}
         {currentUser ? (
           <div className="nav-profile-container" ref={dropdownRef}>
             <div
@@ -265,34 +259,11 @@ export const TopNav: React.FC<TopNavProps> = ({
               onClick={() => setProfileOpen((prev) => !prev)}
               title="Click to view Account & Identity details"
             >
-              <div
-                className="nav-user-avatar"
-                style={{
-                  background: `${getRoleColor(currentUser.role)}20`,
-                  color: getRoleColor(currentUser.role),
-                  border: `1px solid ${getRoleColor(currentUser.role)}40`,
-                }}
-              >
-                {getInitials(currentUser.email)}
+              <div className="nav-user-avatar">
+                {getInitials()}
               </div>
-              <span style={{ fontWeight: 600, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {currentUser.email.split('@')[0]}
-              </span>
-              <span
-                style={{
-                  fontSize: '9px',
-                  fontWeight: 700,
-                  padding: '2px 5px',
-                  borderRadius: 3,
-                  background: `${getRoleColor(currentUser.role)}22`,
-                  color: getRoleColor(currentUser.role),
-                  border: `1px solid ${getRoleColor(currentUser.role)}44`,
-                  letterSpacing: '0.4px',
-                }}
-              >
-                {currentUser.role}
-              </span>
-              <ChevronDown size={12} color="var(--text-tertiary)" />
+              <span className="nav-username">{getUsername()}</span>
+              <ChevronDown size={13} color="var(--text-tertiary)" />
             </div>
 
             {/* Profile Dropdown Menu */}
@@ -300,7 +271,7 @@ export const TopNav: React.FC<TopNavProps> = ({
               <div className="nav-profile-dropdown">
                 <div className="nav-profile-header">
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
                       {currentUser.email}
                     </span>
                     <span
@@ -308,35 +279,46 @@ export const TopNav: React.FC<TopNavProps> = ({
                         display: 'flex',
                         alignItems: 'center',
                         gap: 3,
-                        fontSize: 9,
+                        fontSize: 10,
                         color: 'var(--trade-buy)',
                         fontWeight: 600,
                       }}
                     >
-                      <CheckCircle2 size={11} /> Verified
+                      <CheckCircle2 size={12} /> Verified
                     </span>
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'flex', gap: 6 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'flex', gap: 6, marginTop: 4 }}>
                     <span>UID: <strong className="num">{currentUser.id}</strong></span>
                     <span>•</span>
                     <span>ACC: <strong className="num">{currentUser.accountId}</strong></span>
                   </div>
                   <div
                     style={{
-                      fontSize: 9,
+                      fontSize: 10,
                       color: 'var(--trade-buy)',
                       background: 'rgba(16, 185, 129, 0.1)',
                       border: '1px solid rgba(16, 185, 129, 0.25)',
-                      padding: '3px 6px',
-                      borderRadius: 3,
-                      marginTop: 4,
+                      padding: '4px 8px',
+                      borderRadius: 4,
+                      marginTop: 6,
                       display: 'flex',
                       alignItems: 'center',
                       gap: 4,
                     }}
                   >
-                    <ShieldCheck size={11} />
-                    <span>PBKDF2/SHA-512 Encrypted Session Active</span>
+                    <ShieldCheck size={12} />
+                    <span>Real Money Session Active</span>
+                  </div>
+                </div>
+
+                <div className="nav-profile-hud" style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Settled Cash:</span>
+                    <strong className="num" style={{ color: 'var(--trade-buy)' }}>${accountBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Portfolio Equity:</span>
+                    <strong className="num">${equity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
                   </div>
                 </div>
 
@@ -349,7 +331,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                   }}
                 >
                   <Wallet size={14} color="var(--accent-primary)" />
-                  <span>Deposit & Withdrawal Hub</span>
+                  <span>Deposit & Custody Gateway</span>
                 </button>
 
                 <button
@@ -363,19 +345,6 @@ export const TopNav: React.FC<TopNavProps> = ({
                   <span>Portfolio & Risk Analytics</span>
                 </button>
 
-                {currentUser.role === 'ADMIN' && (
-                  <button
-                    className="nav-profile-item"
-                    onClick={() => {
-                      setProfileOpen(false);
-                      onOpenAdmin();
-                    }}
-                  >
-                    <Shield size={14} color="#8b5cf6" />
-                    <span>Administrator Console</span>
-                  </button>
-                )}
-
                 <button
                   className="nav-profile-item"
                   onClick={() => {
@@ -383,52 +352,54 @@ export const TopNav: React.FC<TopNavProps> = ({
                     onOpenBroker?.();
                   }}
                 >
-                  <Cpu size={14} color="#10b981" />
-                  <span>Real Broker Execution Gateway</span>
+                  <Cpu size={14} color="var(--trade-buy)" />
+                  <span>Broker Route: {brokerName || 'Real STP'}</span>
                 </button>
 
-                <button
-                  className="nav-profile-item"
-                  onClick={() => {
-                    setProfileOpen(false);
-                    onOpenAuth('login');
-                  }}
-                >
-                  <RefreshCw size={14} color="var(--text-secondary)" />
-                  <span>Switch Account / Sign In</span>
-                </button>
+                {currentUser.role === 'ADMIN' && (
+                  <button
+                    className="nav-profile-item"
+                    onClick={() => {
+                      setProfileOpen(false);
+                      onOpenAdmin();
+                    }}
+                    style={{ color: '#8b5cf6' }}
+                  >
+                    <Shield size={14} />
+                    <span>Admin Risk Terminal</span>
+                  </button>
+                )}
 
-                <div className="nav-profile-divider"></div>
+                <div style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 0' }} />
 
                 <button
-                  className="nav-profile-item"
+                  className="nav-profile-item logout-item"
                   onClick={() => {
                     setProfileOpen(false);
                     onLogout();
                   }}
-                  style={{ color: '#ef4444' }}
                 >
                   <LogOut size={14} />
-                  <span>Sign Out of Terminal</span>
+                  <span>Sign Out</span>
                 </button>
               </div>
             )}
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               className="btn-secondary"
               onClick={() => onOpenAuth('login')}
-              style={{ fontSize: 11, padding: '5px 10px' }}
+              style={{ fontSize: 11, padding: '5px 12px' }}
             >
-              <UserCheck size={13} /> Sign In
+              Sign In
             </button>
             <button
               className="btn-primary"
               onClick={() => onOpenAuth('register')}
               style={{ fontSize: 11, padding: '5px 12px' }}
             >
-              <UserPlus size={13} /> Open Account
+              Open Account
             </button>
           </div>
         )}

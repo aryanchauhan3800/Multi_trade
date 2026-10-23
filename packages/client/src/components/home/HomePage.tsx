@@ -32,6 +32,7 @@ import {
   UserCheck,
   UserPlus,
   Play,
+  LayoutDashboard,
 } from 'lucide-react';
 
 interface HomePageProps {
@@ -42,6 +43,7 @@ interface HomePageProps {
   onOpenAuth: (tab?: 'login' | 'register') => void;
   onToggleTheme: () => void;
   onLogout: () => void;
+  onOpenAdmin?: () => void;
 }
 
 type MarketCategory = 'ALL' | 'FOREX' | 'CRYPTO' | 'COMMODITIES' | 'EQUITIES';
@@ -54,6 +56,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onOpenAuth,
   onToggleTheme,
   onLogout,
+  onOpenAdmin,
 }) => {
   const [activeCategory, setActiveCategory] = useState<MarketCategory>('ALL');
   const [marketingData, setMarketingData] = useState<PlatformMarketingData | null>(null);
@@ -111,6 +114,29 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
 
           <nav className="home-nav-links">
+            <button
+              type="button"
+              className="home-nav-link"
+              onClick={() => onLaunchTerminal()}
+              style={{
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                color: 'var(--accent-primary)',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                borderRadius: 'var(--radius-xs)',
+                padding: '4px 10px',
+                fontFamily: 'inherit',
+                fontSize: 12,
+              }}
+              title={currentUser ? 'Access live trading dashboard' : 'Sign in required to access dashboard'}
+            >
+              {currentUser ? <LayoutDashboard size={13} /> : <Lock size={12} />}
+              <span>Dashboard</span>
+            </button>
             <a href="#markets" className="home-nav-link">Markets</a>
             <a href="#accounts" className="home-nav-link">Accounts & Spreads</a>
             <a href="#advantages" className="home-nav-link">Why Nexus</a>
@@ -156,9 +182,20 @@ export const HomePage: React.FC<HomePageProps> = ({
                 <span>{currentUser.email.split('@')[0]}</span>
               </div>
 
-              <button className="btn-primary" onClick={() => onLaunchTerminal()}>
-                <Laptop size={14} /> Launch Terminal
+              <button className="btn-primary" onClick={() => onLaunchTerminal()} title="Open Trading Dashboard">
+                <LayoutDashboard size={14} /> Trading Dashboard
               </button>
+
+              {currentUser.role === 'ADMIN' && onOpenAdmin && (
+                <button
+                  className="btn-secondary"
+                  onClick={onOpenAdmin}
+                  style={{ color: '#8b5cf6', borderColor: 'rgba(139, 92, 246, 0.4)' }}
+                  title="Open Admin Risk Console"
+                >
+                  <Shield size={14} /> Admin Dashboard
+                </button>
+              )}
 
               <button className="btn-icon" onClick={onLogout} title="Sign Out">
                 <LogOut size={14} color="#ef4444" />
@@ -181,8 +218,10 @@ export const HomePage: React.FC<HomePageProps> = ({
                   background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
                   boxShadow: '0 0 12px rgba(139, 92, 246, 0.4)',
                 }}
+                title={currentUser ? 'Open Live Trading Dashboard' : 'Sign in to access dashboard'}
               >
-                <Play size={13} fill="#ffffff" /> WebTerminal
+                {currentUser ? <LayoutDashboard size={13} fill="#ffffff" /> : <Lock size={12} />}
+                <span>{currentUser ? 'Trading Dashboard' : 'Access Dashboard'}</span>
               </button>
             </div>
           )}
@@ -213,8 +252,8 @@ export const HomePage: React.FC<HomePageProps> = ({
 
         <div className="home-hero-actions">
           <button className="btn-hero-primary" onClick={() => onLaunchTerminal()}>
-            <Laptop size={18} />
-            <span>Launch Web Terminal</span>
+            {currentUser ? <LayoutDashboard size={18} /> : <Lock size={16} />}
+            <span>{currentUser ? 'Access Trading Dashboard' : 'Sign In to Access Dashboard'}</span>
             <ArrowRight size={16} />
           </button>
 
@@ -555,7 +594,8 @@ export const HomePage: React.FC<HomePageProps> = ({
 
             <div style={{ marginTop: 12 }}>
               <button className="btn-hero-primary" onClick={() => onLaunchTerminal()}>
-                <Laptop size={16} /> Open Web Terminal Now
+                {currentUser ? <LayoutDashboard size={16} /> : <Lock size={14} />}
+                <span>{currentUser ? 'Access Trading Dashboard Now' : 'Sign In to Open Dashboard'}</span>
               </button>
             </div>
           </div>
@@ -664,7 +704,8 @@ export const HomePage: React.FC<HomePageProps> = ({
           </button>
 
           <button className="btn-hero-secondary" onClick={() => onLaunchTerminal()}>
-            <Laptop size={16} /> Launch WebTerminal
+            {currentUser ? <LayoutDashboard size={16} /> : <Lock size={14} />}
+            <span>{currentUser ? 'Launch Trading Dashboard' : 'Sign In to Dashboard'}</span>
           </button>
         </div>
       </section>
@@ -698,7 +739,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             <ul className="home-footer-links">
               <li><span className="home-footer-link" onClick={() => onOpenAuth('register')}>Nexus Ultra-Low</span></li>
               <li><span className="home-footer-link" onClick={() => onOpenAuth('register')}>Raw Zero Account</span></li>
-              <li><span className="home-footer-link" onClick={() => onLaunchTerminal()}>Web Trading Terminal</span></li>
+              <li><span className="home-footer-link" onClick={() => onLaunchTerminal()}>Web Trading Dashboard</span></li>
               <li><span className="home-footer-link" onClick={() => onOpenAuth('login')}>Client Portal</span></li>
             </ul>
           </div>

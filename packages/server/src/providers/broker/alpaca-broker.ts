@@ -24,12 +24,11 @@ export class AlpacaBrokerProvider implements BrokerProvider {
     this.apiKey = process.env.ALPACA_API_KEY || '';
     this.apiSecret = process.env.ALPACA_API_SECRET || '';
 
-    // Choose base URL based on environment mode and normalize with /v2
-    const defaultUrl = environment === 'LIVE' ? 'https://api.alpaca.markets' : 'https://paper-api.alpaca.markets';
+    // Choose base URL based on environment mode
     const rawUrl =
-      process.env.ALPACA_API_URL ||
-      (environment === 'LIVE' ? process.env.ALPACA_LIVE_URL : process.env.ALPACA_PAPER_URL) ||
-      defaultUrl;
+      environment === 'LIVE'
+        ? process.env.ALPACA_LIVE_URL || 'https://api.alpaca.markets'
+        : process.env.ALPACA_PAPER_URL || process.env.ALPACA_API_URL || 'https://paper-api.alpaca.markets';
     this.baseUrl = rawUrl.endsWith('/v2') ? rawUrl : `${rawUrl.replace(/\/$/, '')}/v2`;
   }
 
@@ -38,14 +37,14 @@ export class AlpacaBrokerProvider implements BrokerProvider {
     if (credentials?.apiSecret) this.apiSecret = credentials.apiSecret;
     if (credentials?.environment) {
       this.environment = credentials.environment;
-      const defaultUrl = credentials.environment === 'LIVE' ? 'https://api.alpaca.markets' : 'https://paper-api.alpaca.markets';
-      const rawUrl =
-        credentials.baseUrl ||
-        process.env.ALPACA_API_URL ||
-        (credentials.environment === 'LIVE' ? process.env.ALPACA_LIVE_URL : process.env.ALPACA_PAPER_URL) ||
-        defaultUrl;
-      this.baseUrl = rawUrl.endsWith('/v2') ? rawUrl : `${rawUrl.replace(/\/$/, '')}/v2`;
     }
+
+    const rawUrl =
+      credentials?.baseUrl ||
+      (this.environment === 'LIVE'
+        ? process.env.ALPACA_LIVE_URL || 'https://api.alpaca.markets'
+        : process.env.ALPACA_PAPER_URL || process.env.ALPACA_API_URL || 'https://paper-api.alpaca.markets');
+    this.baseUrl = rawUrl.endsWith('/v2') ? rawUrl : `${rawUrl.replace(/\/$/, '')}/v2`;
 
     this.isConnected = await this.testConnection();
   }

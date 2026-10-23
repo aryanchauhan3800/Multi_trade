@@ -19,6 +19,7 @@ describe('Server Integration & OMS Test Suite', () => {
     await mockBroker.initialize();
 
     orderEngine = new OrderEngine(mockBroker, marketData);
+    orderEngine.initializeAccount('acc_default', 100000);
   });
 
   after(async () => {

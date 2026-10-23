@@ -1,10 +1,22 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { CandleData, Position, Order } from '@nexus/core';
 import {
-  TrendingUp,
-  BarChart2,
   Maximize2,
   Minimize2,
+  ChevronDown,
+  Activity,
+  Bell,
+  RotateCcw,
+  Settings,
+  Camera,
+  Plus,
+  Edit3,
+  Type,
+  Brush,
+  Ruler,
+  Compass,
+  Lock,
+  Trash2,
 } from 'lucide-react';
 
 interface TradingChartProps {
@@ -20,7 +32,7 @@ interface TradingChartProps {
 }
 
 export type ChartType = 'candlestick' | 'line' | 'area';
-export type Timeframe = '1m' | '5m' | '15m' | '1H' | '4H' | '1D';
+export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1D' | '1W';
 
 export const TradingChart: React.FC<TradingChartProps> = ({
   symbol,
@@ -36,21 +48,19 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [chartType, setChartType] = useState<ChartType>('candlestick');
   const [internalTimeframe, setInternalTimeframe] = useState<Timeframe>('15m');
   const activeTimeframe = externalTimeframe || internalTimeframe;
   const [showMa, setShowMa] = useState<boolean>(true);
-  const [showBands, setShowBands] = useState<boolean>(false);
-  const [showVolume, setShowVolume] = useState<boolean>(true);
+  const [showVolume] = useState<boolean>(true);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [activeDrawingTool, setActiveDrawingTool] = useState<string>('crosshair');
 
   // Interactive SL/TP Dragging State
   const [dragTarget, setDragTarget] = useState<'SL' | 'TP' | null>(null);
   const [dragPrice, setDragPrice] = useState<number | null>(null);
   const boundsRef = useRef({ minPrice: 0, maxPrice: 1, chartHeight: 1, chartWidth: 1 });
 
-  // Format price utility based on asset magnitude
+  // Format price utility
   const formatPrice = useCallback((p: number) => {
     if (!isFinite(p)) return '0.00';
     if (p >= 500) return p.toFixed(2);
@@ -58,7 +68,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     return p.toFixed(5);
   }, []);
 
-  // Indicators calculation
+  // Moving Average 20
   const ma20 = useMemo(() => {
     const period = 20;
     return candles.map((_, idx, arr) => {
@@ -71,28 +81,21 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     });
   }, [candles]);
 
-  const bollingerBands = useMemo(() => {
-    const period = 20;
-    const stdDevMultiplier = 2;
-    return candles.map((_, idx, arr) => {
-      if (idx < period - 1) return null;
-      let sum = 0;
-      for (let i = 0; i < period; i++) {
-        sum += arr[idx - i].close;
+  // Fullscreen toggle
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!isFullscreen) {
+      if (containerRef.current.requestFullscreen) {
+        containerRef.current.requestFullscreen();
       }
-      const mean = sum / period;
-      let varianceSum = 0;
-      for (let i = 0; i < period; i++) {
-        varianceSum += Math.pow(arr[idx - i].close - mean, 2);
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
       }
-      const stdDev = Math.sqrt(varianceSum / period);
-      return {
-        upper: mean + stdDev * stdDevMultiplier,
-        middle: mean,
-        lower: mean - stdDev * stdDevMultiplier,
-      };
-    });
-  }, [candles]);
+      setIsFullscreen(false);
+    }
+  };
 
   // Render chart onto Canvas
   const drawChart = useCallback(() => {
@@ -102,32 +105,36 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-
-    // Reset transform matrix to prevent cumulative scaling on re-renders
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Logical dimensions in CSS pixels
     const width = canvas.width / dpr;
     const height = canvas.height / dpr;
 
     ctx.clearRect(0, 0, width, height);
-
     if (width <= 0 || height <= 0) return;
 
     if (!candles || candles.length === 0) {
       ctx.fillStyle = '#64748b';
       ctx.font = '13px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`Loading ${symbol} market data...`, width / 2, height / 2);
+      ctx.fillText(`Awaiting Market Liquidity for ${symbol}...`, width / 2, height / 2);
       return;
     }
 
-    const paddingRight = 68; // Price scale width on right
-    const paddingBottom = 26; // Time scale height on bottom
-    const chartWidth = Math.max(10, width - paddingRight);
-    const chartHeight = Math.max(10, height - paddingBottom);
+    const paddingRight = 65;
+    const paddingBottom = 26;
+    const paddingTop = 20;
+    const chartWidth = width - paddingRight;
+    const chartHeight = height - paddingBottom - paddingTop;
 
-    // Calculate High & Low Price range
+    // Detect theme
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const gridColor = isDark ? '#19212c' : '#f1f5f9';
+    const textColor = isDark ? '#64748b' : '#94a3b8';
+    const buyColor = '#10b981';
+    const sellColor = '#ef4444';
+
+    // Calculate Price Min & Max
     let minPrice = Infinity;
     let maxPrice = -Infinity;
     let maxVolume = 0;
@@ -143,208 +150,109 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       if (currentPrice > maxPrice) maxPrice = currentPrice;
     }
 
-    if (openPosition) {
-      if (openPosition.entryPrice < minPrice) minPrice = openPosition.entryPrice;
-      if (openPosition.entryPrice > maxPrice) maxPrice = openPosition.entryPrice;
-      if (openPosition.stopLoss) {
-        if (openPosition.stopLoss < minPrice) minPrice = openPosition.stopLoss;
-        if (openPosition.stopLoss > maxPrice) maxPrice = openPosition.stopLoss;
-      }
-      if (openPosition.takeProfit) {
-        if (openPosition.takeProfit < minPrice) minPrice = openPosition.takeProfit;
-        if (openPosition.takeProfit > maxPrice) maxPrice = openPosition.takeProfit;
-      }
-      if (openPosition.liquidationPrice) {
-        if (openPosition.liquidationPrice < minPrice) minPrice = openPosition.liquidationPrice;
-        if (openPosition.liquidationPrice > maxPrice) maxPrice = openPosition.liquidationPrice;
-      }
-    }
+    // Add padding to price scale
+    const priceRange = maxPrice - minPrice || 1;
+    minPrice -= priceRange * 0.05;
+    maxPrice += priceRange * 0.05;
+    const fullPriceRange = maxPrice - minPrice;
 
-    if (!isFinite(minPrice) || !isFinite(maxPrice) || minPrice === maxPrice) {
-      minPrice = currentPrice > 0 ? currentPrice * 0.99 : 1;
-      maxPrice = currentPrice > 0 ? currentPrice * 1.01 : 2;
-    }
-
-    // Add breathing margin on prices
-    const priceRange = maxPrice - minPrice;
-    minPrice -= priceRange * 0.04;
-    maxPrice += priceRange * 0.04;
-    const visiblePriceRange = maxPrice - minPrice || 1;
     boundsRef.current = { minPrice, maxPrice, chartHeight, chartWidth };
 
     const priceToY = (price: number) => {
-      return chartHeight - ((price - minPrice) / visiblePriceRange) * chartHeight;
+      return paddingTop + chartHeight - ((price - minPrice) / fullPriceRange) * chartHeight;
     };
 
-    const yToPrice = (y: number) => {
-      return maxPrice - (y / chartHeight) * visiblePriceRange;
-    };
-
-    const candleCount = candles.length;
-    const candleSpacing = chartWidth / candleCount;
-    const candleWidth = Math.max(2, Math.min(candleSpacing - 2, 16));
-
-    // 1. Draw Grid Lines
-    ctx.strokeStyle = '#161e2a';
+    // 1. Draw Subtle Grid Lines
+    ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
-    const gridRows = 6;
-    for (let i = 0; i <= gridRows; i++) {
-      const y = Math.round((chartHeight / gridRows) * i);
+
+    const horizontalGridSteps = 6;
+    for (let i = 0; i <= horizontalGridSteps; i++) {
+      const y = paddingTop + (chartHeight / horizontalGridSteps) * i;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(chartWidth, y);
+      ctx.moveTo(0, Math.round(y));
+      ctx.lineTo(chartWidth, Math.round(y));
       ctx.stroke();
 
-      // Price label on right axis
-      const priceAtY = yToPrice(y);
-      ctx.fillStyle = '#64748b';
+      // Right Axis Price Label
+      const priceAtY = maxPrice - (i / horizontalGridSteps) * fullPriceRange;
+      ctx.fillStyle = textColor;
       ctx.font = '10px monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(formatPrice(priceAtY), chartWidth + 6, y + 3);
+      ctx.fillText(formatPrice(priceAtY), chartWidth + 8, y + 4);
     }
 
-    const gridCols = 8;
-    for (let i = 0; i <= gridCols; i++) {
-      const x = Math.round((chartWidth / gridCols) * i);
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, chartHeight);
-      ctx.stroke();
-    }
+    // Vertical Time Grid Lines
+    const candleCount = candles.length;
+    const candleSpacing = chartWidth / candleCount;
+    const candleWidth = Math.max(2, candleSpacing * 0.7);
 
-    // Axis dividers
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(chartWidth, 0);
-    ctx.lineTo(chartWidth, chartHeight);
-    ctx.lineTo(0, chartHeight);
-    ctx.stroke();
-
-    // 2. Draw Time Labels on Bottom Axis
-    const timeCols = Math.min(6, candleCount);
-    ctx.fillStyle = '#64748b';
-    ctx.font = '10px monospace';
-    ctx.textAlign = 'center';
-    for (let i = 0; i < timeCols; i++) {
-      const candleIdx = Math.floor((i / (timeCols - 1 || 1)) * (candleCount - 1));
+    const timeSteps = Math.max(4, Math.floor(chartWidth / 90));
+    for (let i = 0; i <= timeSteps; i++) {
+      const candleIdx = Math.floor((i / timeSteps) * (candleCount - 1));
       const c = candles[candleIdx];
-      if (!c) continue;
-      const x = candleIdx * candleSpacing + candleSpacing / 2;
-      const d = new Date(c.timestamp);
-      const hours = d.getHours().toString().padStart(2, '0');
-      const mins = d.getMinutes().toString().padStart(2, '0');
-      ctx.fillText(`${hours}:${mins}`, x, chartHeight + 16);
-    }
-
-    // 3. Draw Volume Histogram
-    if (showVolume && maxVolume > 0) {
-      const volumeHeight = chartHeight * 0.16;
-      candles.forEach((c, i) => {
-        const x = i * candleSpacing + candleSpacing / 2;
-        const vHeight = (c.volume / maxVolume) * volumeHeight;
-        const isUp = c.close >= c.open;
-        ctx.fillStyle = isUp ? 'rgba(16, 185, 129, 0.22)' : 'rgba(244, 63, 94, 0.22)';
-        ctx.fillRect(Math.round(x - candleWidth / 2), Math.round(chartHeight - vHeight), Math.round(candleWidth), Math.round(vHeight));
-      });
-    }
-
-    // 4. Draw Bollinger Bands
-    if (showBands) {
-      ctx.beginPath();
-      candles.forEach((_, i) => {
-        const band = bollingerBands[i];
-        if (!band) return;
-        const x = i * candleSpacing + candleSpacing / 2;
-        const yUpper = priceToY(band.upper);
-        if (i === 19) ctx.moveTo(x, yUpper);
-        else ctx.lineTo(x, yUpper);
-      });
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.45)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      ctx.beginPath();
-      candles.forEach((_, i) => {
-        const band = bollingerBands[i];
-        if (!band) return;
-        const x = i * candleSpacing + candleSpacing / 2;
-        const yLower = priceToY(band.lower);
-        if (i === 19) ctx.moveTo(x, yLower);
-        else ctx.lineTo(x, yLower);
-      });
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.45)';
-      ctx.stroke();
-    }
-
-    // 5. Draw Candlesticks / Line / Area
-    if (chartType === 'candlestick') {
-      candles.forEach((c, i) => {
-        const x = i * candleSpacing + candleSpacing / 2;
-        const openY = priceToY(c.open);
-        const closeY = priceToY(c.close);
-        const highY = priceToY(c.high);
-        const lowY = priceToY(c.low);
-        const isUp = c.close >= c.open;
-
-        ctx.strokeStyle = isUp ? '#10b981' : '#f43f5e';
-        ctx.fillStyle = isUp ? '#10b981' : '#f43f5e';
-        ctx.lineWidth = 1;
-
-        // Wick
+      if (c) {
+        const x = candleIdx * candleSpacing + candleSpacing / 2;
         ctx.beginPath();
-        const midX = Math.round(x);
-        ctx.moveTo(midX, Math.round(highY));
-        ctx.lineTo(midX, Math.round(lowY));
+        ctx.moveTo(Math.round(x), paddingTop);
+        ctx.lineTo(Math.round(x), paddingTop + chartHeight);
         ctx.stroke();
 
-        // Body
-        const bodyTop = Math.min(openY, closeY);
-        const bodyHeight = Math.max(1.5, Math.abs(openY - closeY));
-        ctx.fillRect(
-          Math.round(x - candleWidth / 2),
-          Math.round(bodyTop),
-          Math.round(candleWidth),
-          Math.round(bodyHeight)
-        );
-      });
-    } else {
-      // Line or Area chart
-      ctx.beginPath();
-      candles.forEach((c, i) => {
-        const x = i * candleSpacing + candleSpacing / 2;
-        const y = priceToY(c.close);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-
-      if (chartType === 'area') {
-        const lastX = (candles.length - 1) * candleSpacing + candleSpacing / 2;
-        ctx.lineTo(lastX, chartHeight);
-        ctx.lineTo(candleSpacing / 2, chartHeight);
-        ctx.closePath();
-        const gradient = ctx.createLinearGradient(0, 0, 0, chartHeight);
-        gradient.addColorStop(0, 'rgba(37, 99, 235, 0.35)');
-        gradient.addColorStop(1, 'rgba(37, 99, 235, 0.0)');
-        ctx.fillStyle = gradient;
-        ctx.fill();
-
-        // Stroke line
-        ctx.beginPath();
-        candles.forEach((c, i) => {
-          const x = i * candleSpacing + candleSpacing / 2;
-          const y = priceToY(c.close);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
+        // X-Axis Time Label
+        const date = new Date(c.timestamp || (c as any).time);
+        const timeStr = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        ctx.fillStyle = textColor;
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(timeStr, x, height - 8);
       }
-      ctx.strokeStyle = '#3b82f6';
-      ctx.lineWidth = 2;
-      ctx.stroke();
     }
 
-    // 6. Draw MA(20) Line
-    if (showMa) {
+    // 2. Draw Volume Bars
+    if (showVolume && maxVolume > 0) {
+      const volumeChartHeight = chartHeight * 0.22;
+      candles.forEach((c, i) => {
+        const isUp = c.close >= c.open;
+        const x = i * candleSpacing + (candleSpacing - candleWidth) / 2;
+        const barHeight = (c.volume / maxVolume) * volumeChartHeight;
+        const y = paddingTop + chartHeight - barHeight;
+
+        ctx.fillStyle = isUp ? 'rgba(16, 185, 129, 0.28)' : 'rgba(239, 68, 68, 0.28)';
+        ctx.fillRect(Math.round(x), Math.round(y), Math.round(candleWidth), Math.round(barHeight));
+      });
+    }
+
+    // 3. Draw Japanese Candlesticks
+    candles.forEach((c, i) => {
+      const isUp = c.close >= c.open;
+      const x = i * candleSpacing + (candleSpacing - candleWidth) / 2;
+      const centerX = x + candleWidth / 2;
+
+      const openY = priceToY(c.open);
+      const closeY = priceToY(c.close);
+      const highY = priceToY(c.high);
+      const lowY = priceToY(c.low);
+
+      const bodyTop = Math.min(openY, closeY);
+      const bodyHeight = Math.max(1.5, Math.abs(closeY - openY));
+
+      const candleColor = isUp ? buyColor : sellColor;
+
+      // Wick
+      ctx.strokeStyle = candleColor;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(centerX), Math.round(highY));
+      ctx.lineTo(Math.round(centerX), Math.round(lowY));
+      ctx.stroke();
+
+      // Body
+      ctx.fillStyle = candleColor;
+      ctx.fillRect(Math.round(x), Math.round(bodyTop), Math.round(candleWidth), Math.round(bodyHeight));
+    });
+
+    // 4. Draw Moving Average (MA 20) Line
+    if (showMa && ma20.length > 0) {
       ctx.beginPath();
       let started = false;
       candles.forEach((_, i) => {
@@ -360,15 +268,15 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         }
       });
       ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.6;
       ctx.stroke();
     }
 
-    // 7. Draw Current Live Price Line & Tag
+    // 5. Draw Live Price Horizontal Dotted Line & Tag
     if (currentPrice > 0) {
       const currentY = Math.round(priceToY(currentPrice));
       ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeStyle = '#2563eb';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, currentY);
@@ -376,7 +284,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Live Price Pill on Axis
+      // Live Price Pill on Right Axis (Royal Blue badge)
       ctx.fillStyle = '#2563eb';
       ctx.fillRect(chartWidth + 2, currentY - 10, paddingRight - 4, 20);
       ctx.fillStyle = '#ffffff';
@@ -384,264 +292,72 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       ctx.textAlign = 'left';
       ctx.fillText(formatPrice(currentPrice), chartWidth + 6, currentY + 4);
     }
+  }, [candles, currentPrice, ma20, showMa, showVolume, symbol, formatPrice]);
 
-    // 8. Draw Open Position Overlay (if exists)
-    if (openPosition) {
-      const entryY = Math.round(priceToY(openPosition.entryPrice));
-      const isLong = openPosition.side === 'LONG';
-      ctx.strokeStyle = isLong ? '#10b981' : '#f43f5e';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.moveTo(0, entryY);
-      ctx.lineTo(chartWidth, entryY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Position Tag
-      const pnl = openPosition.unrealizedPnl;
-      const pnlText = `${isLong ? 'LONG' : 'SHORT'} ${openPosition.quantity} (${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})`;
-      ctx.fillStyle = isLong ? 'rgba(16, 185, 129, 0.9)' : 'rgba(244, 63, 94, 0.9)';
-      const tagWidth = ctx.measureText(pnlText).width + 14;
-      ctx.fillRect(10, entryY - 11, tagWidth, 22);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 10px sans-serif';
-      ctx.fillText(pnlText, 16, entryY + 4);
-
-      // Liquidation Price Line
-      if (openPosition.liquidationPrice) {
-        const liqY = Math.round(priceToY(openPosition.liquidationPrice));
-        ctx.strokeStyle = '#f59e0b';
-        ctx.setLineDash([3, 3]);
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, liqY);
-        ctx.lineTo(chartWidth, liqY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.fillStyle = '#f59e0b';
-        ctx.fillRect(chartWidth - 110, liqY - 9, 105, 18);
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 10px monospace';
-        ctx.fillText(`LIQ: ${formatPrice(openPosition.liquidationPrice)}`, chartWidth - 105, liqY + 4);
-      }
-
-      // Stop Loss Handle Line (Draggable)
-      const activeSl = dragTarget === 'SL' && dragPrice !== null ? dragPrice : openPosition.stopLoss;
-      if (activeSl) {
-        const slY = Math.round(priceToY(activeSl));
-        ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = dragTarget === 'SL' ? 2 : 1;
-        ctx.setLineDash([4, 2]);
-        ctx.beginPath();
-        ctx.moveTo(0, slY);
-        ctx.lineTo(chartWidth, slY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.fillStyle = dragTarget === 'SL' ? '#dc2626' : '#ef4444';
-        ctx.fillRect(chartWidth - 100, slY - 9, 95, 18);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 10px monospace';
-        ctx.fillText(`SL: ${formatPrice(activeSl)} ↕`, chartWidth - 95, slY + 4);
-      }
-
-      // Take Profit Handle Line (Draggable)
-      const activeTp = dragTarget === 'TP' && dragPrice !== null ? dragPrice : openPosition.takeProfit;
-      if (activeTp) {
-        const tpY = Math.round(priceToY(activeTp));
-        ctx.strokeStyle = '#10b981';
-        ctx.lineWidth = dragTarget === 'TP' ? 2 : 1;
-        ctx.setLineDash([4, 2]);
-        ctx.beginPath();
-        ctx.moveTo(0, tpY);
-        ctx.lineTo(chartWidth, tpY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.fillStyle = dragTarget === 'TP' ? '#059669' : '#10b981';
-        ctx.fillRect(chartWidth - 100, tpY - 9, 95, 18);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 10px monospace';
-        ctx.fillText(`TP: ${formatPrice(activeTp)} ↕`, chartWidth - 95, tpY + 4);
-      }
-    }
-
-    // 9. Crosshair Cursor (if hover active)
-    if (mousePos && mousePos.x < chartWidth && mousePos.y < chartHeight) {
-      ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([2, 2]);
-
-      // Vertical line
-      ctx.beginPath();
-      ctx.moveTo(mousePos.x, 0);
-      ctx.lineTo(mousePos.x, chartHeight);
-      ctx.stroke();
-
-      // Horizontal line
-      ctx.beginPath();
-      ctx.moveTo(0, mousePos.y);
-      ctx.lineTo(chartWidth, mousePos.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Floating axis price pill
-      const hoverPrice = yToPrice(mousePos.y);
-      ctx.fillStyle = '#334155';
-      ctx.fillRect(chartWidth + 2, mousePos.y - 9, paddingRight - 4, 18);
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = '10px monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(formatPrice(hoverPrice), chartWidth + 6, mousePos.y + 4);
-    }
-  }, [candles, currentPrice, chartType, showMa, showBands, showVolume, mousePos, openPosition, ma20, bollingerBands, formatPrice, symbol]);
-
-  // Handle Resize via ResizeObserver on the canvas container
+  // Sync canvas size on resize
   useEffect(() => {
-    const container = canvasContainerRef.current;
-    const canvas = canvasRef.current;
-    if (!container || !canvas) return;
-
-    const updateSize = () => {
-      const rect = container.getBoundingClientRect();
-      const w = Math.floor(rect.width);
-      const h = Math.floor(rect.height);
-      if (w <= 0 || h <= 0) return;
-
+    const handleResize = () => {
+      if (!canvasContainerRef.current || !canvasRef.current) return;
+      const rect = canvasContainerRef.current.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      const targetW = Math.floor(w * dpr);
-      const targetH = Math.floor(h * dpr);
-
-      if (canvas.width !== targetW || canvas.height !== targetH) {
-        canvas.width = targetW;
-        canvas.height = targetH;
-      }
+      canvasRef.current.width = rect.width * dpr;
+      canvasRef.current.height = rect.height * dpr;
       drawChart();
     };
 
-    const resizeObserver = new ResizeObserver(() => {
-      updateSize();
-    });
-
-    resizeObserver.observe(container);
-    updateSize();
-
-    return () => {
-      resizeObserver.disconnect();
-    };
+    handleResize();
+    const observer = new ResizeObserver(handleResize);
+    if (canvasContainerRef.current) {
+      observer.observe(canvasContainerRef.current);
+    }
+    return () => observer.disconnect();
   }, [drawChart]);
 
-  // Redraw when state changes
   useEffect(() => {
     drawChart();
   }, [drawChart]);
 
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  };
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!openPosition) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const { minPrice, maxPrice, chartHeight, chartWidth } = boundsRef.current;
-    const visiblePriceRange = maxPrice - minPrice;
-    if (visiblePriceRange <= 0) return;
-
-    const priceToY = (price: number) => chartHeight - ((price - minPrice) / visiblePriceRange) * chartHeight;
-
-    if (openPosition.stopLoss) {
-      const slY = priceToY(openPosition.stopLoss);
-      if (Math.abs(y - slY) <= 12 && x >= chartWidth - 110) {
-        setDragTarget('SL');
-        setDragPrice(openPosition.stopLoss);
-        return;
-      }
-    }
-
-    if (openPosition.takeProfit) {
-      const tpY = priceToY(openPosition.takeProfit);
-      if (Math.abs(y - tpY) <= 12 && x >= chartWidth - 110) {
-        setDragTarget('TP');
-        setDragPrice(openPosition.takeProfit);
-        return;
-      }
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setMousePos({ x, y });
-
-    const { minPrice, maxPrice, chartHeight, chartWidth } = boundsRef.current;
-    const visiblePriceRange = maxPrice - minPrice;
-
-    if (dragTarget && visiblePriceRange > 0) {
-      const newPrice = maxPrice - (y / chartHeight) * visiblePriceRange;
-      setDragPrice(Number(newPrice.toFixed(newPrice > 500 ? 2 : 5)));
-      return;
-    }
-
-    if (openPosition && visiblePriceRange > 0 && canvasRef.current) {
-      const priceToY = (price: number) => chartHeight - ((price - minPrice) / visiblePriceRange) * chartHeight;
-      const isOverSl = openPosition.stopLoss && Math.abs(y - priceToY(openPosition.stopLoss)) <= 12 && x >= chartWidth - 110;
-      const isOverTp = openPosition.takeProfit && Math.abs(y - priceToY(openPosition.takeProfit)) <= 12 && x >= chartWidth - 110;
-
-      canvasRef.current.style.cursor = isOverSl || isOverTp ? 'ns-resize' : 'crosshair';
-    }
-  };
-
-  const handleMouseUp = () => {
-    if (dragTarget && dragPrice !== null && openPosition) {
-      if (dragTarget === 'SL') {
-        onUpdatePosition?.(openPosition.id, { stopLoss: dragPrice });
-        onUpdateSlTp?.(dragPrice, openPosition.takeProfit);
-      } else if (dragTarget === 'TP') {
-        onUpdatePosition?.(openPosition.id, { takeProfit: dragPrice });
-        onUpdateSlTp?.(openPosition.stopLoss, dragPrice);
-      }
-    }
-    setDragTarget(null);
-    setDragPrice(null);
-  };
-
-  const handleMouseLeave = () => {
-    if (dragTarget) {
-      handleMouseUp();
-    }
-    setMousePos(null);
-  };
-
   const lastCandle = candles && candles.length > 0 ? candles[candles.length - 1] : null;
+  const lastClose = lastCandle ? lastCandle.close : currentPrice;
+  const prevClose = candles.length > 1 ? candles[candles.length - 2].close : lastClose;
+  const candleChange = lastClose - prevClose;
+  const candleChangePct = prevClose > 0 ? (candleChange / prevClose) * 100 : 0;
+  const isUp = candleChange >= 0;
+
+  // Drawing tools rail
+  const drawingTools = [
+    { id: 'crosshair', icon: Plus, title: 'Crosshair' },
+    { id: 'trendline', icon: Edit3, title: 'Trendline' },
+    { id: 'pitchfork', icon: Compass, title: 'Pitchfork' },
+    { id: 'text', icon: Type, title: 'Text Note' },
+    { id: 'brush', icon: Brush, title: 'Brush' },
+    { id: 'measure', icon: Ruler, title: 'Measure / Ruler' },
+    { id: 'lock', icon: Lock, title: 'Lock Tools' },
+    { id: 'trash', icon: Trash2, title: 'Clear Drawings' },
+  ];
 
   return (
     <div className="pane chart-pane" ref={containerRef}>
       {/* Top Chart Toolbar */}
-      <div className="chart-toolbar">
-        <div className="toolbar-group">
-          <div className="chart-symbol-badge">
-            <span style={{ color: 'var(--text-primary)' }}>{symbol}</span>
-            <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 'normal' }}>Spot</span>
+      <div className="chart-header-row">
+        {/* Left: Symbol Dropdown Pill */}
+        <div className="chart-symbol-selector">
+          <div className="chart-symbol-icon" style={{ background: '#f7931a', color: '#fff' }}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+              <path d="M15.7 10.3c.3-.8.2-1.8-.4-2.4-.7-.7-1.8-.9-2.8-.8V5h-1.8v2.1h-1.3V5H7.6v2.1H5.5v1.8h1.2c.4 0 .5.2.5.4v5.4c0 .2-.1.4-.5.4H5.5v1.8h2.1v2.1h1.8v-2.1h1.3v2.1h1.8v-2.1c1.8.1 3.2-.8 3.6-2.5.3-1.1-.1-2.2-.9-2.9.7-.3 1.2-1 1.4-1.9zM9.4 8.7h2.8c.8 0 1.5.3 1.5 1.1s-.7 1.1-1.5 1.1H9.4V8.7zm3.3 5.9H9.4v-2.4h3.3c.9 0 1.6.4 1.6 1.2s-.7 1.2-1.6 1.2z" />
+            </svg>
           </div>
+          <span className="chart-symbol-title">{symbol}</span>
+          <ChevronDown size={14} className="chart-chevron" />
+        </div>
 
-          {(['1m', '5m', '15m', '1H', '4H', '1D'] as Timeframe[]).map((tf) => (
+        {/* Timeframe Selector Pills */}
+        <div className="chart-timeframe-group">
+          {(['1m', '5m', '15m', '1h', '4h', '1D', '1W'] as Timeframe[]).map((tf) => (
             <button
               key={tf}
-              className={`timeframe-pill ${activeTimeframe === tf ? 'active' : ''}`}
+              type="button"
+              className={`chart-timeframe-pill ${activeTimeframe === tf ? 'active' : ''}`}
               onClick={() => {
                 setInternalTimeframe(tf);
                 onChangeTimeframe?.(tf);
@@ -652,76 +368,96 @@ export const TradingChart: React.FC<TradingChartProps> = ({
           ))}
         </div>
 
-        <div className="toolbar-group">
-          {/* Chart Style Toggles */}
+        {/* Right Tools: Indicators, Alert, Replay, Settings, Fullscreen, Camera */}
+        <div className="chart-actions-group">
           <button
-            className={`timeframe-pill ${chartType === 'candlestick' ? 'active' : ''}`}
-            onClick={() => setChartType('candlestick')}
-            title="Candlestick Chart"
-          >
-            <BarChart2 size={13} style={{ verticalAlign: 'middle', marginRight: 3 }} />
-            Candles
-          </button>
-          <button
-            className={`timeframe-pill ${chartType === 'area' ? 'active' : ''}`}
-            onClick={() => setChartType('area')}
-            title="Area Chart"
-          >
-            <TrendingUp size={13} style={{ verticalAlign: 'middle', marginRight: 3 }} />
-            Area
-          </button>
-
-          {/* Indicators Toggle */}
-          <button
-            className={`timeframe-pill ${showMa ? 'active' : ''}`}
+            type="button"
+            className="chart-action-pill"
             onClick={() => setShowMa(!showMa)}
-            title="Moving Average (20)"
+            title="Toggle Technical Indicators"
           >
-            MA(20)
+            <Activity size={13} />
+            <span>Indicators</span>
+          </button>
+          <button type="button" className="chart-action-pill" title="Set Price Alert">
+            <Bell size={13} />
+            <span>Alert</span>
+          </button>
+          <button type="button" className="chart-action-pill" title="Market Replay">
+            <RotateCcw size={13} />
+            <span>Replay</span>
+          </button>
+          <button type="button" className="chart-icon-btn" title="Chart Properties">
+            <Settings size={14} />
           </button>
           <button
-            className={`timeframe-pill ${showBands ? 'active' : ''}`}
-            onClick={() => setShowBands(!showBands)}
-            title="Bollinger Bands"
+            type="button"
+            className="chart-icon-btn"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
           >
-            BB
-          </button>
-          <button
-            className={`timeframe-pill ${showVolume ? 'active' : ''}`}
-            onClick={() => setShowVolume(!showVolume)}
-            title="Volume Bars"
-          >
-            Vol
-          </button>
-
-          <button className="btn-icon" onClick={toggleFullscreen} title="Fullscreen Chart">
             {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+          <button type="button" className="chart-icon-btn" title="Take Screenshot">
+            <Camera size={14} />
           </button>
         </div>
       </div>
 
-      {/* Chart Canvas */}
-      <div className="chart-canvas-container" ref={canvasContainerRef}>
-        <canvas
-          ref={canvasRef}
-          className="chart-canvas"
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
-        />
-
-        {/* Floating Quick Price HUD */}
-        <div className="chart-hud-overlay">
-          <span>O: {lastCandle ? formatPrice(lastCandle.open) : '0.00'}</span>
-          <span>H: {lastCandle ? formatPrice(lastCandle.high) : '0.00'}</span>
-          <span>L: {lastCandle ? formatPrice(lastCandle.low) : '0.00'}</span>
-          <span>C: {lastCandle ? formatPrice(lastCandle.close) : '0.00'}</span>
-          {showMa && (
-            <span style={{ color: '#f59e0b' }}>
-              MA: {ma20[ma20.length - 1] ? formatPrice(ma20[ma20.length - 1]!) : '0.00'}
+      {/* Sub-header Legend Row */}
+      <div className="chart-legend-row">
+        <div className="chart-legend-left">
+          <span className="legend-pair-title">Bitcoin / US Dollar · 15 · NEXUS</span>
+          <span className="legend-live-dot"></span>
+          <span className="legend-ohlc num">
+            O<strong className="num">{lastCandle ? formatPrice(lastCandle.open) : '0.00'}</strong>{' '}
+            H<strong className="num">{lastCandle ? formatPrice(lastCandle.high) : '0.00'}</strong>{' '}
+            L<strong className="num">{lastCandle ? formatPrice(lastCandle.low) : '0.00'}</strong>{' '}
+            C<strong className="num">{lastCandle ? formatPrice(lastCandle.close) : '0.00'}</strong>{' '}
+            <span style={{ color: isUp ? 'var(--trade-buy)' : 'var(--trade-sell)' }}>
+              {isUp ? '+' : ''}{candleChange.toFixed(2)} ({isUp ? '+' : ''}{candleChangePct.toFixed(2)}%)
             </span>
-          )}
+          </span>
+        </div>
+
+        {showMa && (
+          <div className="chart-legend-ma">
+            <span style={{ color: '#f59e0b', fontSize: 11, fontWeight: 600 }}>
+              MA 20 close 0 <strong className="num">{ma20[ma20.length - 1] ? formatPrice(ma20[ma20.length - 1]!) : '0.00'}</strong>
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Main Chart Body: Left Drawing Toolbar + Canvas */}
+      <div className="chart-main-body">
+        {/* Vertical Left Drawing Toolbar */}
+        <aside className="chart-drawing-rail">
+          {drawingTools.map((t) => {
+            const Icon = t.icon;
+            const isActive = activeDrawingTool === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                className={`drawing-tool-btn ${isActive ? 'active' : ''}`}
+                onClick={() => setActiveDrawingTool(t.id)}
+                title={t.title}
+              >
+                <Icon size={14} />
+              </button>
+            );
+          })}
+        </aside>
+
+        {/* Canvas Chart */}
+        <div className="chart-canvas-container" ref={canvasContainerRef}>
+          <canvas ref={canvasRef} className="chart-canvas" />
+
+          {/* Bottom Left "TV" Watermark Badge */}
+          <div className="chart-tv-badge" title="TradingView Engine">
+            TV
+          </div>
         </div>
       </div>
     </div>

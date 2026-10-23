@@ -20,7 +20,7 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.PORT) || 4000;
 const host = process.env.HOST || '0.0.0.0';
-const envMode: EnvironmentMode = (process.env.ENVIRONMENT_MODE as EnvironmentMode) || 'PAPER_TRADING';
+let envMode: EnvironmentMode = (process.env.ENVIRONMENT_MODE as EnvironmentMode) || 'LIVE';
 
 const allowedOriginSetting = process.env.CORS_ORIGIN;
 app.use(
@@ -128,7 +128,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
   try {
     const { email, password, role, initialBalance } = req.body;
     const result = authService.register(email, password, role);
-    const balanceNum = parseFloat(initialBalance) || 50000;
+    const balanceNum = envMode === 'LIVE' ? (parseFloat(initialBalance) || 0) : (parseFloat(initialBalance) || 50000);
     orderEngine.initializeAccount(result.user.accountId, balanceNum, 'USD');
     res.status(201).json({
       ...result,
@@ -662,6 +662,48 @@ app.get('/api/wallet/transactions', (_req: Request, res: Response) => {
 // -------------------------------------------------------------
 // REAL BROKER EXECUTION & GATEWAY CONFIGURATION
 // -------------------------------------------------------------
+
+// Switch Platform Environment Mode (LIVE Real Money vs PAPER_TRADING)
+app.post('/api/environment/switch', async (req: Request, res: Response) => {
+  try {
+    const { environment } = req.body;
+    if (environment !== 'LIVE' && environment !== 'PAPER_TRADING' && environment !== 'DEVELOPMENT') {
+      return res.status(400).json({ error: 'Invalid environment mode. Supported: LIVE | PAPER_TRADING' });
+    }
+
+    envMode = environment;
+    broker.environment = environment;
+    await broker.initialize();
+
+    // Persist to .env file
+    try {
+      const envPath = path.resolve(process.cwd(), '.env');
+      if (fs.existsSync(envPath)) {
+        let envContent = fs.readFileSync(envPath, 'utf8');
+        envContent = envContent.replace(/^ENVIRONMENT_MODE=.*/m, `ENVIRONMENT_MODE=${environment}`);
+        fs.writeFileSync(envPath, envContent, 'utf8');
+      }
+    } catch (_e) {}
+
+    auditLogs.unshift({
+      id: `aud_env_${Date.now()}`,
+      time: new Date().toLocaleTimeString(),
+      action: 'ENVIRONMENT_SWITCH',
+      details: `Platform switched to ${environment} mode. Broker: ${broker.name}.`,
+      status: 'SUCCESS',
+    });
+
+    const brokerStatus = await broker.getBrokerStatus();
+
+    res.json({
+      success: true,
+      environment: envMode,
+      broker: brokerStatus,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Get Real Broker Status & Live Account Telemetry
 app.get('/api/broker/status', async (_req: Request, res: Response) => {

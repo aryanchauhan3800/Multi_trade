@@ -38,12 +38,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [role, setRole] = useState<UserRole>('TRADER');
-  const [initialBalance, setInitialBalance] = useState<number>(50000);
+  const [initialBalance, setInitialBalance] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showDemoAccounts, setShowDemoAccounts] = useState<boolean>(false);
 
   // Generate 100% Dynamic On-Demand Demo Session (No Static Hardcoded Credentials)
-  const handleInstantDemoSession = async (demoRole: UserRole = 'TRADER') => {
+  const handleInstantDemoSession = async (demoRole: UserRole = 'TRADER', demoBalance = 50000) => {
     setErrorMsg(null);
     setLoading(true);
 
@@ -51,7 +52,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const res = await fetch(`${SERVER_BASE}/api/auth/demo-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: demoRole, initialBalance }),
+        body: JSON.stringify({ role: demoRole, initialBalance: demoBalance }),
       });
 
       const data = (await res.json()) as any;
@@ -87,7 +88,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       };
       if (authTab === 'register') {
         payload.role = role;
-        payload.initialBalance = initialBalance;
+        payload.initialBalance = 0; // Live real accounts initialize at $0.00 settled funds
       }
 
       const res = await fetch(`${SERVER_BASE}${endpoint}`, {
@@ -142,21 +143,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 width: 28,
                 height: 28,
                 borderRadius: 'var(--radius-xs)',
-                background: 'var(--accent-subtle)',
+                background: 'rgba(16, 185, 129, 0.15)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: 'var(--accent-primary)',
+                color: 'var(--trade-buy)',
               }}
             >
               <Lock size={15} />
             </div>
             <div>
               <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: '0.04em' }}>
-                NEXUS IDENTITY & ACCESS PORTAL
+                NEXUS LIVE CAPITAL & TRADING PORTAL
               </span>
               <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-                PBKDF2/SHA-512 Encrypted Institutional Gateway
+                {tab === 'login' ? 'Sign in to access your Live Real Money dashboard' : 'Open a Real Live Institutional STP Trading Account'}
               </div>
             </div>
           </div>
@@ -195,155 +196,187 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               padding: '12px 0',
               fontWeight: 600,
               fontSize: 12,
-              borderBottom: tab === 'register' ? '2px solid var(--accent-primary)' : 'none',
-              color: tab === 'register' ? 'var(--accent-primary)' : 'var(--text-tertiary)',
+              borderBottom: tab === 'register' ? '2px solid var(--trade-buy)' : 'none',
+              color: tab === 'register' ? 'var(--trade-buy)' : 'var(--text-tertiary)',
             }}
             onClick={() => {
               setTab('register');
               setErrorMsg(null);
             }}
           >
-            <UserPlus size={14} /> Open Account
+            <UserPlus size={14} /> Open Real Account
           </button>
         </div>
 
         <div className="modal-body" style={{ padding: '20px' }}>
-          {/* Dynamic Starting Capital Selector */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Initial Virtual Capital:</span>
-              <strong className="num" style={{ color: 'var(--trade-buy)' }}>${initialBalance.toLocaleString()} USD</strong>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
-              {[5000, 10000, 25000, 50000, 100000].map((amt) => (
-                <button
-                  key={amt}
-                  type="button"
-                  onClick={() => setInitialBalance(amt)}
+          {/* Live Real Account Notice for Register Tab */}
+          {tab === 'register' && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-xs)',
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 5,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CheckCircle2 size={14} /> LIVE REAL MONEY ACCOUNT (USD)
+                </span>
+                <span
                   style={{
-                    background: initialBalance === amt ? 'var(--accent-subtle)' : 'var(--bg-surface-elevated)',
-                    border: `1px solid ${initialBalance === amt ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                    borderRadius: 'var(--radius-xs)',
-                    padding: '6px 2px',
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: 700,
-                    cursor: 'pointer',
-                    color: initialBalance === amt ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                    transition: 'var(--trans-fast)',
+                    background: 'rgba(16, 185, 129, 0.2)',
+                    color: '#10b981',
+                    padding: '2px 6px',
+                    borderRadius: 3,
                   }}
                 >
-                  ${amt >= 1000 ? `${amt / 1000}k` : amt}
-                </button>
-              ))}
+                  STP / DMA ACTIVE
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                Direct execution against live interbank liquidity. Real accounts start with <strong>$0.00 USD</strong> settled capital. Fund instantly with Card, Crypto, or Wire via the Deposit Gateway after creating your account.
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Dynamic On-Demand Demo Generators */}
+          {/* Collapsible Sandbox / Demo Testing Credentials */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Zap size={13} color="#f59e0b" /> One-Click Demo Access & Seeded Accounts:
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('admin@nexus.exchange');
-                  setPassword('NexusAdmin2026!');
-                  setTab('login');
-                  setErrorMsg(null);
-                  submitAuth('admin@nexus.exchange', 'NexusAdmin2026!', 'login');
-                }}
-                disabled={loading}
-                style={{
-                  background: 'var(--bg-surface-elevated)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-xs)',
-                  padding: '8px 10px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <div style={{ fontSize: 16 }}>👑</div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>Sign In as Admin</div>
-                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>admin@nexus.exchange</div>
+            <button
+              type="button"
+              onClick={() => setShowDemoAccounts((prev) => !prev)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'none',
+                border: 'none',
+                padding: '4px 0',
+                cursor: 'pointer',
+                color: 'var(--text-tertiary)',
+                fontSize: 11,
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Zap size={13} color="#f59e0b" /> Developer test logins & demo accounts
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--accent-primary)' }}>
+                {showDemoAccounts ? '▲ Hide' : '▼ Expand'}
+              </span>
+            </button>
+
+            {showDemoAccounts && (
+              <div style={{ marginTop: 10, animation: 'fadeIn 0.2s ease' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('admin@nexus.exchange');
+                      setPassword('NexusAdmin2026!');
+                      setTab('login');
+                      setErrorMsg(null);
+                      submitAuth('admin@nexus.exchange', 'NexusAdmin2026!', 'login');
+                    }}
+                    disabled={loading}
+                    style={{
+                      background: 'var(--bg-surface-elevated)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-xs)',
+                      padding: '8px 10px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ fontSize: 16 }}>👑</div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>Sign In as Admin</div>
+                      <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>admin@nexus.exchange</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('trader@nexus.exchange');
+                      setPassword('Trader2026!');
+                      setTab('login');
+                      setErrorMsg(null);
+                      submitAuth('trader@nexus.exchange', 'Trader2026!', 'login');
+                    }}
+                    disabled={loading}
+                    style={{
+                      background: 'var(--bg-surface-elevated)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-xs)',
+                      padding: '8px 10px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ fontSize: 16 }}>📈</div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>Sign In as Trader</div>
+                      <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>trader@nexus.exchange</div>
+                    </div>
+                  </button>
                 </div>
-              </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('trader@nexus.exchange');
-                  setPassword('Trader2026!');
-                  setTab('login');
-                  setErrorMsg(null);
-                  submitAuth('trader@nexus.exchange', 'Trader2026!', 'login');
-                }}
-                disabled={loading}
-                style={{
-                  background: 'var(--bg-surface-elevated)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-xs)',
-                  padding: '8px 10px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <div style={{ fontSize: 16 }}>📈</div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>Sign In as Trader</div>
-                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>trader@nexus.exchange</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleInstantDemoSession('TRADER', 50000)}
+                    disabled={loading}
+                    style={{
+                      background: 'var(--bg-surface-elevated)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-xs)',
+                      padding: '8px 10px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-primary)' }}>⚡ Fresh Demo Trader</span>
+                    <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>Auto-generate practice session</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleInstantDemoSession('ADMIN', 100000)}
+                    disabled={loading}
+                    style={{
+                      background: 'var(--bg-surface-elevated)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-xs)',
+                      padding: '8px 10px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6' }}>🛡️ Fresh Demo Admin</span>
+                    <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>Auto-generate practice session</span>
+                  </button>
                 </div>
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => handleInstantDemoSession('TRADER')}
-                disabled={loading}
-                style={{
-                  background: 'var(--bg-surface-elevated)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-xs)',
-                  padding: '8px 10px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 2,
-                }}
-              >
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-primary)' }}>⚡ Fresh Guest Trader</span>
-                <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>Auto-generate on-demand</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleInstantDemoSession('ADMIN')}
-                disabled={loading}
-                style={{
-                  background: 'var(--bg-surface-elevated)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-xs)',
-                  padding: '8px 10px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 2,
-                }}
-              >
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6' }}>🛡️ Fresh Guest Admin</span>
-                <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>Auto-generate on-demand</span>
-              </button>
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Error Banner with Smart Action */}
@@ -486,12 +519,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               ) : tab === 'login' ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span>Sign In to Terminal</span>
+                  <span>Sign In & Access Dashboard</span>
                   <ArrowRight size={15} />
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span>Create Account & Start Trading</span>
+                  <span>Create Account & Open Dashboard</span>
                   <ArrowRight size={15} />
                 </div>
               )}

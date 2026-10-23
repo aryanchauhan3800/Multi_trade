@@ -52,9 +52,10 @@ export class OrderEngine {
     private marketData: CompositeMarketDataProvider,
     private events: OrderEngineEvents = {}
   ) {
-    // Seed default account
+    // Seed default account (in LIVE mode real funds start at 0.00 until funded, vs paper trading)
+    const isLive = process.env.ENVIRONMENT_MODE === 'LIVE';
     this.balances.set('acc_default', {
-      total: 100000.0,
+      total: isLive ? 0.0 : 100000.0,
       locked: 0.0,
       currency: 'USD',
     });
@@ -63,21 +64,24 @@ export class OrderEngine {
     this.startSlTpMonitor();
   }
 
-  public initializeAccount(accountId: string, startingBalance = 50000.0, currency = 'USD'): void {
+  public initializeAccount(accountId: string, startingBalance?: number, currency = 'USD'): void {
+    const isLive = process.env.ENVIRONMENT_MODE === 'LIVE';
+    const initialBal = startingBalance !== undefined ? startingBalance : (isLive ? 0.0 : 50000.0);
     this.balances.set(accountId, {
-      total: startingBalance,
+      total: initialBal,
       locked: 0.0,
       currency,
     });
     this.events.onAuditLog?.({
       action: 'ACCOUNT_INITIALIZED',
-      details: `Account ${accountId} initialized with dynamic capital of $${startingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${currency}.`,
+      details: `Account ${accountId} initialized with ${isLive ? 'real' : 'paper'} capital of $${initialBal.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${currency}.`,
       status: 'SUCCESS',
     });
   }
 
   public getAccountBalance(accountId = 'acc_default') {
-    const bal = this.balances.get(accountId) || { total: 100000.0, locked: 0.0, currency: 'USD' };
+    const isLive = process.env.ENVIRONMENT_MODE === 'LIVE';
+    const bal = this.balances.get(accountId) || { total: isLive ? 0.0 : 100000.0, locked: 0.0, currency: 'USD' };
     const usedMargin = Array.from(this.positions.values()).reduce((sum, p) => sum + p.margin, 0);
     const unrealizedPnl = Array.from(this.positions.values()).reduce((sum, p) => sum + p.unrealizedPnl, 0);
     const equity = bal.total + unrealizedPnl;

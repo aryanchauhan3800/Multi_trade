@@ -33,7 +33,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ onClose, onRefreshPare
   // Form State
   const [apiKey, setApiKey] = useState<string>('');
   const [apiSecret, setApiSecret] = useState<string>('');
-  const [environment, setEnvironment] = useState<EnvironmentMode>('PAPER_TRADING');
+  const [environment, setEnvironment] = useState<EnvironmentMode>('LIVE');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const fetchBrokerStatus = async () => {
@@ -236,25 +236,6 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ onClose, onRefreshPare
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <button
                   type="button"
-                  onClick={() => setEnvironment('PAPER_TRADING')}
-                  style={{
-                    background: environment === 'PAPER_TRADING' ? 'var(--accent-subtle)' : 'var(--bg-surface-elevated)',
-                    border: `1px solid ${environment === 'PAPER_TRADING' ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-xs)',
-                    cursor: 'pointer',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    textAlign: 'left',
-                    color: environment === 'PAPER_TRADING' ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                  }}
-                >
-                  <div>Alpaca Paper (Real Feeds & Fills)</div>
-                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>paper-api.alpaca.markets</div>
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => setEnvironment('LIVE')}
                   style={{
                     background: environment === 'LIVE' ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-surface-elevated)',
@@ -268,8 +249,30 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ onClose, onRefreshPare
                     color: environment === 'LIVE' ? '#10b981' : 'var(--text-secondary)',
                   }}
                 >
-                  <div>Alpaca Live (Real Exchange Capital)</div>
-                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>api.alpaca.markets</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+                    <strong>Alpaca Live (Real Money)</strong>
+                  </div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>api.alpaca.markets/v2</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEnvironment('PAPER_TRADING')}
+                  style={{
+                    background: environment === 'PAPER_TRADING' ? 'var(--accent-subtle)' : 'var(--bg-surface-elevated)',
+                    border: `1px solid ${environment === 'PAPER_TRADING' ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-xs)',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    textAlign: 'left',
+                    color: environment === 'PAPER_TRADING' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                  }}
+                >
+                  <div>Alpaca Paper (Sandbox)</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>paper-api.alpaca.markets/v2</div>
                 </button>
               </div>
             </div>
@@ -280,7 +283,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ onClose, onRefreshPare
                 <input
                   type="text"
                   className="form-input num"
-                  placeholder="PK..."
+                  placeholder={environment === 'LIVE' ? 'AK... (Alpaca Live API Key ID)' : 'PK... (Alpaca Paper Key ID)'}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   disabled={submitting}

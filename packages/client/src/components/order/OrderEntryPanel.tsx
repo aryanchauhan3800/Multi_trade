@@ -6,7 +6,7 @@ import {
   calculateRequiredMargin,
   validateStopLossTakeProfit,
 } from '@nexus/core';
-import { ShieldAlert, Zap, HelpCircle } from 'lucide-react';
+import { SlidersHorizontal, Plus, ChevronDown } from 'lucide-react';
 
 interface OrderEntryPanelProps {
   symbol: string;
@@ -27,6 +27,7 @@ interface OrderEntryPanelProps {
     requiredMargin: number;
     estimatedFee: number;
   }) => void;
+  onOpenDeposit?: () => void;
 }
 
 export const OrderEntryPanel: React.FC<OrderEntryPanelProps> = ({
@@ -34,9 +35,8 @@ export const OrderEntryPanel: React.FC<OrderEntryPanelProps> = ({
   ticker,
   availableBalance,
   leverage,
-  oneClickMode,
-  onToggleOneClick,
   onRequestOrder,
+  onOpenDeposit,
 }) => {
   const [side, setSide] = useState<OrderSide>('BUY');
   const [type, setType] = useState<OrderType>('MARKET');
@@ -46,7 +46,7 @@ export const OrderEntryPanel: React.FC<OrderEntryPanelProps> = ({
   // SL / TP Controls
   const [hasStopLoss, setHasStopLoss] = useState<boolean>(false);
   const [stopLossPrice, setStopLossPrice] = useState<number>(0);
-  const [hasTakeProfit, setHasTakeProfit] = useState<boolean>(false);
+  const [hasTakeProfit, setHasTakeProfit] = useState<boolean>(true);
   const [takeProfitPrice, setTakeProfitPrice] = useState<number>(0);
 
   // Auto-fill price when ticker loads or symbol changes
@@ -74,7 +74,7 @@ export const OrderEntryPanel: React.FC<OrderEntryPanelProps> = ({
   const targetExecutionPrice = type === 'MARKET' ? currentPrice : limitPrice;
 
   // Financial Calculations
-  const estimatedCost = useMemo(() => {
+  const estimatedNotional = useMemo(() => {
     return Number((quantity * targetExecutionPrice).toFixed(2));
   }, [quantity, targetExecutionPrice]);
 
@@ -89,31 +89,17 @@ export const OrderEntryPanel: React.FC<OrderEntryPanelProps> = ({
 
   const estimatedFee = useMemo(() => {
     // 5 bps (0.05%) standard exchange commission
-    return Number((estimatedCost * 0.0005).toFixed(2));
-  }, [estimatedCost]);
-
-  // Projected P&L for Stop Loss & Take Profit
-  const slPnl = useMemo(() => {
-    if (!hasStopLoss || stopLossPrice <= 0 || targetExecutionPrice <= 0) return null;
-    const diff = side === 'BUY' ? stopLossPrice - targetExecutionPrice : targetExecutionPrice - stopLossPrice;
-    const pnl = diff * quantity;
-    const pct = (diff / targetExecutionPrice) * 100;
-    return { pnl: Number(pnl.toFixed(2)), pct: Number(pct.toFixed(2)) };
-  }, [hasStopLoss, stopLossPrice, targetExecutionPrice, side, quantity]);
-
-  const tpPnl = useMemo(() => {
-    if (!hasTakeProfit || takeProfitPrice <= 0 || targetExecutionPrice <= 0) return null;
-    const diff = side === 'BUY' ? takeProfitPrice - targetExecutionPrice : targetExecutionPrice - takeProfitPrice;
-    const pnl = diff * quantity;
-    const pct = (diff / targetExecutionPrice) * 100;
-    return { pnl: Number(pnl.toFixed(2)), pct: Number(pct.toFixed(2)) };
-  }, [hasTakeProfit, takeProfitPrice, targetExecutionPrice, side, quantity]);
+    return Number((estimatedNotional * 0.0005).toFixed(2));
+  }, [estimatedNotional]);
 
   const isMarginSufficient = availableBalance >= requiredMargin + estimatedFee;
 
+  // Preset chips
+  const presets = [0.01, 0.05, 0.1, 0.5, 1];
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isMarginSufficient) return;
+    if (quantity <= 0) return;
 
     if (hasStopLoss || hasTakeProfit) {
       const validation = validateStopLossTakeProfit(
@@ -136,223 +122,217 @@ export const OrderEntryPanel: React.FC<OrderEntryPanelProps> = ({
       price: type !== 'MARKET' ? limitPrice : undefined,
       stopLoss: hasStopLoss ? stopLossPrice : undefined,
       takeProfit: hasTakeProfit ? takeProfitPrice : undefined,
-      estimatedCost,
+      estimatedCost: estimatedNotional,
       requiredMargin,
       estimatedFee,
     });
   };
 
+  // Base asset display e.g. "BTC" from "BTCUSD"
+  const baseAsset = symbol.replace(/USD|USDT|EUR|GBP|JPY/g, '') || symbol;
+
   return (
-    <div className="pane order-entry-pane">
-      <div className="pane-header">
-        <span>ORDER EXECUTION</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>1-Click</span>
-          <button
-            className="btn-icon"
-            style={{ width: 24, height: 24, color: oneClickMode ? '#f59e0b' : 'var(--text-disabled)' }}
-            onClick={() => onToggleOneClick(!oneClickMode)}
-            title={oneClickMode ? 'One-Click Trading Enabled' : 'Confirmation Modal Active'}
-          >
-            <Zap size={14} fill={oneClickMode ? '#f59e0b' : 'none'} />
-          </button>
-        </div>
+    <div className="pane order-panel-pane">
+      {/* Order Panel Header */}
+      <div className="order-panel-header">
+        <span className="order-panel-title">Order Panel</span>
+        <button className="btn-icon" title="Order settings">
+          <SlidersHorizontal size={15} />
+        </button>
       </div>
 
-      {/* Buy / Sell Large Buttons with Live Bid/Ask Inside */}
-      <div className="order-toggle-container">
+      {/* Buy / Sell Segmented Buttons */}
+      <div className="order-side-toggle">
         <button
           type="button"
           className={`order-side-btn buy ${side === 'BUY' ? 'active' : ''}`}
           onClick={() => setSide('BUY')}
         >
-          <span className="order-side-title">BUY</span>
-          <span className="order-side-price">{ticker ? ticker.ask.toFixed(ticker.ask > 500 ? 2 : 5) : '0.00'}</span>
+          Buy
         </button>
-
         <button
           type="button"
           className={`order-side-btn sell ${side === 'SELL' ? 'active' : ''}`}
           onClick={() => setSide('SELL')}
         >
-          <span className="order-side-title">SELL</span>
-          <span className="order-side-price">{ticker ? ticker.bid.toFixed(ticker.bid > 500 ? 2 : 5) : '0.00'}</span>
+          Sell
         </button>
       </div>
 
-      {/* Form Controls */}
-      <form className="order-form-body" onSubmit={handleSubmit}>
-        {/* Order Type */}
-        <div className="form-group">
-          <div className="form-label-row">
-            <span>Order Type</span>
-          </div>
-          <div className="form-input-container">
-            <select
-              className="form-input"
-              value={type}
-              onChange={(e) => setType(e.target.value as OrderType)}
+      {/* Order Type Pills: Market, Limit, Stop */}
+      <div className="order-type-pills">
+        {(['MARKET', 'LIMIT', 'STOP'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            className={`order-type-pill ${type === t ? 'active' : ''}`}
+            onClick={() => setType(t)}
+          >
+            {t.charAt(0) + t.slice(1).toLowerCase()}
+          </button>
+        ))}
+      </div>
+
+      {/* Available Balance Row */}
+      <div className="order-balance-row">
+        <span className="balance-label">Available Balance</span>
+        <div className="balance-value-container">
+          <strong className="num">${availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+          {onOpenDeposit && (
+            <button
+              type="button"
+              className="balance-add-btn"
+              onClick={onOpenDeposit}
+              title="Deposit funds to trade"
             >
-              <option value="MARKET">Market Execution</option>
-              <option value="LIMIT">Limit Order</option>
-              <option value="STOP">Stop Order</option>
-            </select>
-          </div>
+              <Plus size={12} />
+            </button>
+          )}
         </div>
+      </div>
 
-        {/* Limit Price (if non-market) */}
-        {type !== 'MARKET' && (
-          <div className="form-group">
-            <div className="form-label-row">
-              <span>Order Price</span>
-            </div>
-            <div className="form-input-container">
-              <input
-                type="number"
-                step="any"
-                className="form-input"
-                value={limitPrice}
-                onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
-              />
-              <span className="form-unit">USD</span>
+      {/* Order Size Form */}
+      <form onSubmit={handleSubmit} className="order-form-body">
+        {/* Order Size Field */}
+        <div className="order-input-group">
+          <div className="order-input-label-row">
+            <span>Order Size</span>
+            <div className="order-asset-select">
+              <span>{baseAsset}</span>
+              <ChevronDown size={12} />
             </div>
           </div>
-        )}
 
-        {/* Quantity / Volume */}
-        <div className="form-group">
-          <div className="form-label-row">
-            <span>Volume (Lots / Units)</span>
-            <span className="num">Min: 0.01</span>
-          </div>
-          <div className="form-input-container">
+          <div className="order-size-input-box">
             <input
               type="number"
-              step="0.01"
-              min="0.01"
-              className="form-input"
+              step="any"
+              min="0.001"
+              className="order-number-input num"
               value={quantity}
-              onChange={(e) => setQuantity(parseFloat(e.target.value) || 0.01)}
+              onChange={(e) => setQuantity(parseFloat(e.target.value) || 0)}
+              required
             />
-            <span className="form-unit">{symbol.includes('USD') ? symbol.replace('USD', '') : 'Units'}</span>
+            <span className="order-usd-equiv num">
+              ≈ ${estimatedNotional.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
           </div>
-          <div className="quick-lot-row">
-            {[0.01, 0.05, 0.1, 0.5, 1.0].map((amt) => (
+
+          {/* Preset Buttons */}
+          <div className="order-presets-row">
+            {presets.map((val) => (
               <button
-                key={amt}
+                key={val}
                 type="button"
-                className="quick-lot-btn"
-                onClick={() => setQuantity(amt)}
+                className={`order-preset-btn ${quantity === val ? 'active' : ''}`}
+                onClick={() => setQuantity(val)}
               >
-                {amt}
+                {val}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Stop Loss & Take Profit Group */}
-        <div className="risk-control-box">
-          {/* Take Profit */}
-          <div>
-            <div className="risk-toggle-row">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+        {/* Limit Price Input if not Market */}
+        {type !== 'MARKET' && (
+          <div className="order-input-group" style={{ marginTop: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, display: 'block' }}>
+              {type === 'LIMIT' ? 'Limit Price (USD)' : 'Stop Price (USD)'}
+            </span>
+            <div className="order-size-input-box">
+              <input
+                type="number"
+                step="any"
+                className="order-number-input num"
+                value={limitPrice}
+                onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
+                required
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Financial Calculation Breakdown */}
+        <div className="order-calc-table">
+          <div className="calc-row">
+            <span>Estimated Notional</span>
+            <span className="num">${estimatedNotional.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          <div className="calc-row">
+            <span>Required Margin (1:{leverage})</span>
+            <span className="num">${requiredMargin.toFixed(3)}</span>
+          </div>
+          <div className="calc-row">
+            <span>Est. Fee (5 bps)</span>
+            <span className="num">${estimatedFee.toFixed(2)}</span>
+          </div>
+          <div className="calc-row">
+            <span>Free Margin</span>
+            <span className={`num ${!isMarginSufficient ? 'text-danger' : ''}`}>
+              ${availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+
+        {/* Advanced Risk Controls (Take Profit & Stop Loss Toggles) */}
+        <div className="order-toggles-section">
+          {/* Take Profit Toggle */}
+          <div className="order-toggle-item">
+            <div className="toggle-switch-row">
+              <label className="toggle-switch">
                 <input
                   type="checkbox"
                   checked={hasTakeProfit}
                   onChange={(e) => setHasTakeProfit(e.target.checked)}
                 />
-                <span style={{ color: 'var(--trade-buy)' }}>Take Profit</span>
+                <span className="toggle-slider"></span>
               </label>
-              {tpPnl && (
-                <span className="num" style={{ color: 'var(--trade-buy)' }}>
-                  +{tpPnl.pnl > 0 ? tpPnl.pnl : 0} USD (+{tpPnl.pct}%)
-                </span>
-              )}
+              <span className="toggle-label">Take Profit</span>
             </div>
             {hasTakeProfit && (
-              <div className="form-input-container" style={{ marginTop: 6 }}>
-                <input
-                  type="number"
-                  step="any"
-                  className="form-input"
-                  value={takeProfitPrice}
-                  onChange={(e) => setTakeProfitPrice(parseFloat(e.target.value) || 0)}
-                />
-                <span className="form-unit">USD</span>
-              </div>
+              <input
+                type="number"
+                step="any"
+                className="toggle-price-input num"
+                value={takeProfitPrice}
+                onChange={(e) => setTakeProfitPrice(parseFloat(e.target.value) || 0)}
+                placeholder="Target Price"
+              />
             )}
           </div>
 
-          {/* Stop Loss */}
-          <div>
-            <div className="risk-toggle-row">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          {/* Stop Loss Toggle */}
+          <div className="order-toggle-item">
+            <div className="toggle-switch-row">
+              <label className="toggle-switch">
                 <input
                   type="checkbox"
                   checked={hasStopLoss}
                   onChange={(e) => setHasStopLoss(e.target.checked)}
                 />
-                <span style={{ color: 'var(--trade-sell)' }}>Stop Loss</span>
+                <span className="toggle-slider"></span>
               </label>
-              {slPnl && (
-                <span className="num" style={{ color: 'var(--trade-sell)' }}>
-                  {slPnl.pnl} USD ({slPnl.pct}%)
-                </span>
-              )}
+              <span className="toggle-label">Stop Loss</span>
             </div>
             {hasStopLoss && (
-              <div className="form-input-container" style={{ marginTop: 6 }}>
-                <input
-                  type="number"
-                  step="any"
-                  className="form-input"
-                  value={stopLossPrice}
-                  onChange={(e) => setStopLossPrice(parseFloat(e.target.value) || 0)}
-                />
-                <span className="form-unit">USD</span>
-              </div>
+              <input
+                type="number"
+                step="any"
+                className="toggle-price-input num"
+                value={stopLossPrice}
+                onChange={(e) => setStopLossPrice(parseFloat(e.target.value) || 0)}
+                placeholder="Stop Price"
+              />
             )}
           </div>
         </div>
 
-        {/* Dynamic Margin & Cost Table */}
-        <table className="order-calc-table">
-          <tbody>
-            <tr>
-              <td>Estimated Notional:</td>
-              <td className="num">${estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-            </tr>
-            <tr>
-              <td>Required Margin (1:{leverage}):</td>
-              <td className="num">${requiredMargin.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-            </tr>
-            <tr>
-              <td>Estimated Fee (5 bps):</td>
-              <td className="num">${estimatedFee.toFixed(2)}</td>
-            </tr>
-            <tr>
-              <td>Free Margin:</td>
-              <td className="num" style={{ color: isMarginSufficient ? 'var(--text-primary)' : 'var(--trade-sell)' }}>
-                ${availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        {!isMarginSufficient && (
-          <div style={{ color: 'var(--trade-sell)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <ShieldAlert size={14} /> Insufficient Free Margin to open position.
-          </div>
-        )}
-
-        {/* Submit Button */}
+        {/* Main Big CTA Button */}
         <button
           type="submit"
-          disabled={!isMarginSufficient}
-          className={`btn-submit-order ${side === 'BUY' ? 'buy' : 'sell'}`}
-          style={{ opacity: isMarginSufficient ? 1 : 0.5, cursor: isMarginSufficient ? 'pointer' : 'not-allowed' }}
+          className={`order-submit-button ${side === 'BUY' ? 'btn-buy' : 'btn-sell'}`}
         >
-          {side} {quantity} {symbol}
+          {side === 'BUY' ? 'Buy' : 'Sell'} {quantity} {symbol}
         </button>
       </form>
     </div>

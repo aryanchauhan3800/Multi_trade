@@ -13,6 +13,8 @@ import {
 } from '@nexus/core';
 
 import { TopNav, AuthUser } from './components/navigation/TopNav.js';
+import { LeftSidebar } from './components/navigation/LeftSidebar.js';
+import { TopTickerStrip } from './components/navigation/TopTickerStrip.js';
 import { WatchlistPanel } from './components/watchlist/WatchlistPanel.js';
 import { TradingChart, Timeframe } from './components/chart/TradingChart.js';
 import { OrderEntryPanel } from './components/order/OrderEntryPanel.js';
@@ -40,20 +42,61 @@ const SERVER_BASE = API_BASE_URL;
 const WS_BASE = WS_BASE_URL;
 
 export const App: React.FC = () => {
-  // Theme State
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  // Theme State (Default to Light Mode matching target design)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('nexus_theme') as 'dark' | 'light') || 'light';
+  });
 
-  // Environment & Role State
-  const [environment, setEnvironment] = useState<EnvironmentMode>('PAPER_TRADING');
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('nexus_theme', theme);
+  }, [theme]);
+
+  // Environment & Role State (LIVE Real Money vs PAPER_TRADING)
+  const [environment, setEnvironment] = useState<EnvironmentMode>('LIVE');
   const [userRole, setUserRole] = useState<UserRole>('TRADER');
-
-  // Page View State: 'home' | 'terminal'
-  const [currentView, setCurrentView] = useState<'home' | 'terminal'>('home');
 
   // Authentication & Identity State
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
+
+  // Page View State: 'home' | 'terminal' (STRICT: requires authenticated session for dashboard)
+  const [currentView, setCurrentView] = useState<'home' | 'terminal'>(() => {
+    if (typeof window !== 'undefined') {
+      const hasToken = !!localStorage.getItem('nexus_auth_token');
+      const hash = window.location.hash.toLowerCase();
+      if ((hash === '#dashboard' || hash === '#terminal') && hasToken) {
+        return 'terminal';
+      }
+      const saved = localStorage.getItem('nexus_current_view');
+      if (saved === 'terminal' && hasToken) {
+        return 'terminal';
+      }
+    }
+    return 'home';
+  });
+
+  const navigateToView = useCallback((view: 'home' | 'terminal') => {
+    const hasToken = !!localStorage.getItem('nexus_auth_token');
+    // Guard: strictly forbid visiting terminal dashboard if not logged in
+    if (view === 'terminal' && !currentUser && !hasToken) {
+      setAuthModalTab('login');
+      setShowAuthModal(true);
+      return;
+    }
+    setCurrentView(view);
+    localStorage.setItem('nexus_current_view', view);
+    if (view === 'terminal') {
+      if (window.location.hash !== '#dashboard') {
+        window.location.hash = 'dashboard';
+      }
+    } else {
+      if (window.location.hash === '#dashboard' || window.location.hash === '#terminal') {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    }
+  }, [currentUser]);
 
   // Mobile View State
   const [mobileTab, setMobileTab] = useState<'markets' | 'watchlist' | 'trade' | 'portfolio' | 'account'>('trade');
@@ -61,8 +104,8 @@ export const App: React.FC = () => {
   // Active Instrument
   const [selectedSymbol, setSelectedSymbol] = useState<string>('BTCUSD');
 
-  // Account Financial State
-  const [balance, setBalance] = useState<number>(100000.0);
+  // Account Financial State (Settled real balance, defaults to 0.0 until funded or synced)
+  const [balance, setBalance] = useState<number>(0.0);
   const [leverage, setLeverage] = useState<number>(100);
   const [oneClickMode, setOneClickMode] = useState<boolean>(false);
 
@@ -80,6 +123,24 @@ export const App: React.FC = () => {
   const [showBrokerModal, setShowBrokerModal] = useState<boolean>(false);
   const [brokerStatus, setBrokerStatus] = useState<any | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
+
+  // Real-Time Environment Switching Handler
+  const handleChangeEnvironment = async (nextEnv: EnvironmentMode) => {
+    setEnvironment(nextEnv);
+    localStorage.setItem('nexus_environment', nextEnv);
+    try {
+      const res = await fetch(`${SERVER_BASE}/api/environment/switch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ environment: nextEnv }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        if (data.broker) setBrokerStatus(data.broker);
+      }
+    } catch (_err) {}
+    syncServerState();
+  };
 
   // Real-Time Market Data Tickers (100% Live Streamed, No Static Prices)
   const [tickers, setTickers] = useState<Map<string, TickerData>>(new Map());
@@ -162,13 +223,35 @@ export const App: React.FC = () => {
       .then((data) => {
         if (data && data.status) {
           setBrokerStatus(data.status);
+          if (data.status.environment) {
+            setEnvironment(data.status.environment);
+            localStorage.setItem('nexus_environment', data.status.environment);
+          }
         }
       })
       .catch(() => {});
   }, []);
 
-  // Initial Sync on Mount
+  // Initial Sync on Mount & URL Hash Listener
   useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.toLowerCase();
+      const hasToken = !!localStorage.getItem('nexus_auth_token');
+      if (hash === '#dashboard' || hash === '#terminal') {
+        if (!hasToken) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          setCurrentView('home');
+          setAuthModalTab('login');
+          setShowAuthModal(true);
+        } else {
+          setCurrentView('terminal');
+        }
+      } else if (hash === '#home' || hash === '') {
+        setCurrentView('home');
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+
     syncServerState();
 
     // Auto-restore authenticated session from localStorage
@@ -188,11 +271,28 @@ export const App: React.FC = () => {
             };
             setCurrentUser(usr);
             setUserRole(usr.role);
+
+            // If user has saved dashboard view or hash is #dashboard/#terminal, open terminal
+            const savedView = localStorage.getItem('nexus_current_view');
+            const hash = window.location.hash.toLowerCase();
+            if (savedView === 'terminal' || hash === '#dashboard' || hash === '#terminal') {
+              setCurrentView('terminal');
+            }
           } else {
             localStorage.removeItem('nexus_auth_token');
+            localStorage.removeItem('nexus_current_view');
+            setCurrentView('home');
           }
         })
         .catch(() => {});
+    } else {
+      // If no token exists and current view is terminal, bounce to home
+      if (currentView === 'terminal') {
+        setCurrentView('home');
+        if (window.location.hash === '#dashboard' || window.location.hash === '#terminal') {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+      }
     }
 
     // Fetch initial tickers
@@ -208,6 +308,8 @@ export const App: React.FC = () => {
         }
       })
       .catch(() => {});
+
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, [syncServerState]);
 
   const handleAuthSuccess = (session: { token: string; user: AuthUser; initialBalance?: number }) => {
@@ -218,12 +320,21 @@ export const App: React.FC = () => {
     }
     localStorage.setItem('nexus_auth_token', session.token);
     syncServerState();
+
+    // Immediately grant direct access to the Trading Dashboard on sign-in
+    navigateToView('terminal');
+
+    // If Admin, also open the Admin Console modal overlay for immediate system management
+    if (session.user.role === 'ADMIN') {
+      setShowAdminModal(true);
+    }
+
     setAuditLogs((prev) => [
       {
         id: `aud_auth_${Date.now()}`,
         time: new Date().toLocaleTimeString(),
         action: 'USER_AUTHENTICATED',
-        details: `Active session established for ${session.user.email} (${session.user.role}). Account: ${session.user.accountId}${session.initialBalance ? ` with $${session.initialBalance.toLocaleString()} dynamic capital` : ''}.`,
+        details: `Active session established for ${session.user.email} (${session.user.role}). Account: ${session.user.accountId}${session.initialBalance ? ` with $${session.initialBalance.toLocaleString()} dynamic capital` : ''}. Directly accessed trading dashboard.`,
         status: 'SUCCESS',
       },
       ...prev,
@@ -241,8 +352,11 @@ export const App: React.FC = () => {
       } catch (_err) {}
     }
     localStorage.removeItem('nexus_auth_token');
+    localStorage.removeItem('nexus_current_view');
     setCurrentUser(null);
     setUserRole('TRADER');
+    setShowAdminModal(false);
+    navigateToView('home');
     setAuditLogs((prev) => [
       {
         id: `aud_logout_${Date.now()}`,
@@ -423,6 +537,11 @@ export const App: React.FC = () => {
 
   // Order Submission Pipeline
   const handleOrderRequest = (orderParams: any) => {
+    if (!currentUser) {
+      setAuthModalTab('login');
+      setShowAuthModal(true);
+      return;
+    }
     if (oneClickMode) {
       executeOrderOnServer(orderParams);
     } else {
@@ -538,8 +657,14 @@ export const App: React.FC = () => {
           theme={theme}
           currentUser={currentUser}
           onLaunchTerminal={(symbol) => {
+            const hasToken = !!localStorage.getItem('nexus_auth_token');
+            if (!currentUser && !hasToken) {
+              setAuthModalTab('login');
+              setShowAuthModal(true);
+              return;
+            }
             if (symbol) setSelectedSymbol(symbol);
-            setCurrentView('terminal');
+            navigateToView('terminal');
           }}
           onOpenAuth={(tab) => {
             setAuthModalTab(tab || 'login');
@@ -547,6 +672,16 @@ export const App: React.FC = () => {
           }}
           onToggleTheme={handleToggleTheme}
           onLogout={handleLogout}
+          onOpenAdmin={() => {
+            const hasToken = !!localStorage.getItem('nexus_auth_token');
+            if (!currentUser && !hasToken) {
+              setAuthModalTab('login');
+              setShowAuthModal(true);
+              return;
+            }
+            navigateToView('terminal');
+            setShowAdminModal(true);
+          }}
         />
       ) : (
         <>
@@ -564,20 +699,18 @@ export const App: React.FC = () => {
             onOpenDeposit={() => setShowDepositModal(true)}
             onOpenPortfolio={() => setShowPortfolioModal(true)}
             onOpenAdmin={() => setShowAdminModal(true)}
-            onChangeEnvironment={setEnvironment}
+            onChangeEnvironment={handleChangeEnvironment}
             onOpenAuth={(tab) => {
               setAuthModalTab(tab || 'login');
               setShowAuthModal(true);
             }}
             onLogout={handleLogout}
-            onGoHome={() => setCurrentView('home')}
+            onGoHome={() => navigateToView('home')}
             onOpenBroker={() => setShowBrokerModal(true)}
             brokerName={
-              brokerStatus?.provider === 'ALPACA_LIVE'
-                ? 'ALPACA LIVE'
-                : brokerStatus?.provider === 'ALPACA_PAPER'
-                ? 'ALPACA PAPER'
-                : 'REAL BROKER: LIVE STP'
+              environment === 'LIVE'
+                ? (brokerStatus?.provider === 'ALPACA_LIVE' ? 'ALPACA LIVE' : 'REAL BROKER: LIVE STP')
+                : (brokerStatus?.provider === 'ALPACA_PAPER' ? 'ALPACA PAPER' : 'DEMO STP')
             }
           />
 
@@ -607,54 +740,81 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* Main 4-Quadrant Workspace Grid */}
-          <main className="workspace-grid">
-            {/* Left: Markets & Watchlist */}
-            <WatchlistPanel
-              tickers={tickers}
-              selectedSymbol={selectedSymbol}
-              onSelectSymbol={setSelectedSymbol}
-              flashingSymbols={flashingSymbols}
-            />
+            {/* Terminal Workspace with Left Sidebar & Main Content */}
+            <div className="terminal-workspace-wrapper">
+              {/* Vertical Navigation Sidebar */}
+              <LeftSidebar
+                activeTab="trading"
+                onSelectTab={(tab) => {
+                  if (tab === 'dashboard') navigateToView('home');
+                  if (tab === 'portfolio') setShowPortfolioModal(true);
+                  if (tab === 'settings') setShowBrokerModal(true);
+                }}
+                onOpenDeposit={() => setShowDepositModal(true)}
+                onGoHome={() => navigateToView('home')}
+              />
 
-            {/* Center: Interactive Pro Chart */}
-            <TradingChart
-              symbol={selectedSymbol}
-              candles={candles}
-              currentPrice={currentSelectedTicker?.lastPrice || 0}
-              openPosition={currentOpenPosition}
-              timeframe={timeframe}
-              onChangeTimeframe={setTimeframe}
-              onUpdatePosition={handleUpdatePosition}
-            />
+              {/* Main Trading Content Area */}
+              <div className="terminal-main-content">
+                {/* 1. Top Mini Ticker Cards with Sparklines */}
+                <TopTickerStrip
+                  tickers={tickers}
+                  selectedSymbol={selectedSymbol}
+                  onSelectSymbol={setSelectedSymbol}
+                />
 
-            {/* Right: Order Entry & Risk Calculator */}
-            <OrderEntryPanel
-              symbol={selectedSymbol}
-              ticker={currentSelectedTicker}
-              availableBalance={freeMargin}
-              leverage={leverage}
-              oneClickMode={oneClickMode}
-              onToggleOneClick={setOneClickMode}
-              onRequestOrder={handleOrderRequest}
-            />
+                {/* 2. Three Column Trading Workspace */}
+                <div className="terminal-workspace-columns">
+                  {/* Left Column: Watchlist Panel */}
+                  <WatchlistPanel
+                    tickers={tickers}
+                    selectedSymbol={selectedSymbol}
+                    onSelectSymbol={setSelectedSymbol}
+                    flashingSymbols={flashingSymbols}
+                  />
 
-            {/* Bottom: Tabbed Workspace Dock */}
-            <BottomDock
-              positions={positions}
-              openOrders={openOrders}
-              tradeHistory={tradeHistory}
-              transactions={transactions}
-              auditLogs={auditLogs}
-              equity={equity}
-              usedMargin={usedMargin}
-              freeMargin={freeMargin}
-              marginLevel={marginLevel}
-              dailyPnl={dailyPnl}
-              onClosePosition={handleClosePosition}
-              onCancelOrder={handleCancelOrder}
-            />
-          </main>
+                  {/* Center Column: Interactive Pro Chart + Bottom Positions Dock */}
+                  <div className="terminal-center-column">
+                    <TradingChart
+                      symbol={selectedSymbol}
+                      candles={candles}
+                      currentPrice={currentSelectedTicker?.lastPrice || 0}
+                      openPosition={currentOpenPosition}
+                      timeframe={timeframe}
+                      onChangeTimeframe={setTimeframe}
+                      onUpdatePosition={handleUpdatePosition}
+                    />
+
+                    <BottomDock
+                      positions={positions}
+                      openOrders={openOrders}
+                      tradeHistory={tradeHistory}
+                      transactions={transactions}
+                      auditLogs={auditLogs}
+                      equity={equity}
+                      usedMargin={usedMargin}
+                      freeMargin={freeMargin}
+                      marginLevel={marginLevel}
+                      dailyPnl={dailyPnl}
+                      onClosePosition={handleClosePosition}
+                      onCancelOrder={handleCancelOrder}
+                    />
+                  </div>
+
+                  {/* Right Column: Order Entry Panel */}
+                  <OrderEntryPanel
+                    symbol={selectedSymbol}
+                    ticker={currentSelectedTicker}
+                    availableBalance={freeMargin}
+                    leverage={leverage}
+                    oneClickMode={oneClickMode}
+                    onToggleOneClick={setOneClickMode}
+                    onRequestOrder={handleOrderRequest}
+                    onOpenDeposit={() => setShowDepositModal(true)}
+                  />
+                </div>
+              </div>
+            </div>
 
           {/* Mobile Bottom Tab Bar */}
           <nav className="mobile-nav-bar">
