@@ -3,7 +3,7 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { CompositeMarketDataProvider } from './providers/market-data/composite-market-data.js';
@@ -26,11 +26,11 @@ let envMode: EnvironmentMode = (process.env.ENVIRONMENT_MODE as EnvironmentMode)
 const allowedOriginSetting = process.env.CORS_ORIGIN;
 app.use(
   cors({
-    origin: (origin, callback) => {
+    origin: (origin: string | undefined, callback: (err: Error | null, origin?: any) => void) => {
       if (!origin || !allowedOriginSetting || allowedOriginSetting === '*') {
         return callback(null, true);
       }
-      const origins = allowedOriginSetting.split(',').map((o) => o.trim());
+      const origins = allowedOriginSetting.split(',').map((o: string) => o.trim());
       if (origins.includes(origin) || origins.includes('*')) {
         return callback(null, true);
       }
@@ -851,7 +851,7 @@ app.post('/api/admin/adjust-balance', (req: Request, res: Response) => {
 // CLIENT SPA FALLBACK & API ROUTE 404
 // -------------------------------------------------------------
 if (clientDistPath) {
-  app.get('*', (req: Request, res: Response, next) => {
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
       return next();
     }

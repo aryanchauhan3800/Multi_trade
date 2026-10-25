@@ -37,7 +37,7 @@ describe('Server Integration & OMS Test Suite', () => {
 
       const session = authService.verifyToken(result.token);
       assert.ok(session);
-      assert.equal(session.role, 'ADMIN');
+      assert.equal(session!.role, 'ADMIN');
     });
 
     it('rejects login with invalid password', () => {
@@ -54,7 +54,7 @@ describe('Server Integration & OMS Test Suite', () => {
 
       const session = authService.verifyToken(reg.token);
       assert.ok(session);
-      assert.equal(session.email, email);
+      assert.equal(session!.email, email);
     });
   });
 
@@ -79,10 +79,10 @@ describe('Server Integration & OMS Test Suite', () => {
       const positions = orderEngine.getPositions();
       const pos = positions.find((p) => p.symbol === 'BTCUSD' && p.side === 'LONG');
       assert.ok(pos);
-      assert.equal(pos.quantity, 0.1);
-      assert.equal(pos.stopLoss, 70000);
-      assert.equal(pos.takeProfit, 120000);
-      assert.ok(pos.liquidationPrice && pos.liquidationPrice < pos.entryPrice);
+      assert.equal(pos!.quantity, 0.1);
+      assert.equal(pos!.stopLoss, 70000);
+      assert.equal(pos!.takeProfit, 120000);
+      assert.ok(pos!.liquidationPrice && pos!.liquidationPrice < pos!.entryPrice);
     });
 
     it('rejects order with invalid Stop Loss levels (SL above price on BUY)', async () => {
