@@ -11,7 +11,7 @@
     "start": "concurrently -n \"SERVER,CLIENT\" -c \"magenta,cyan\" \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "npm run dev --workspace=@nexus/server",
     "dev:client": "npm run dev --workspace=@nexus/client",
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspace=@nexus/core && npm run build --workspace=@nexus/client && npm run db:generate && npm run build --workspace=@nexus/server",
     "build:server": "npm run build --workspace=@nexus/core && npm run build --workspace=@nexus/client && npm run db:generate && npm run build --workspace=@nexus/server",
     "start:server": "node packages/server/dist/server.js",
     "test": "npm run test --workspaces --if-present",

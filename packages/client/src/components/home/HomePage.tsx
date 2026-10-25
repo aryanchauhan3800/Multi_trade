@@ -279,7 +279,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             { label: 'Raw Interbank Spreads', value: '0.0 Pips' },
             { label: 'Flexible Max Leverage', value: '1:1000' },
             { label: 'Negative Balance Protected', value: '100%' },
-          ]).map((stat, idx) => (
+          ]).map((stat: any, idx: number) => (
             <div key={idx} className="home-hero-stat-card">
               <span className="home-hero-stat-val">{stat.value}</span>
               <span className="home-hero-stat-label">{stat.label}</span>
@@ -290,7 +290,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* 3. Live Streaming Ticker Strip */}
       <div className="home-ticker-strip">
-        {tickerArray.map((t) => {
+        {tickerArray.map((t: any) => {
           const isUp = t.change24h >= 0;
           return (
             <div
@@ -340,7 +340,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
         {/* Category Tabs */}
         <div className="home-market-tabs">
-          {(['ALL', 'FOREX', 'CRYPTO', 'COMMODITIES', 'EQUITIES'] as MarketCategory[]).map((cat) => (
+          {(['ALL', 'FOREX', 'CRYPTO', 'COMMODITIES', 'EQUITIES'] as MarketCategory[]).map((cat: MarketCategory) => (
             <button
               key={cat}
               className={`home-market-tab-btn ${activeCategory === cat ? 'active' : ''}`}
@@ -375,7 +375,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               </tr>
             </thead>
             <tbody>
-              {filteredTickers.map((t) => {
+              {filteredTickers.map((t: any) => {
                 const meta = symbolDetails[t.symbol] || { name: t.symbol, category: 'ALL', baseSpread: 0.5 };
                 const isUp = t.change24h >= 0;
                 const spreadFormatted = ((t.ask - t.bid) * (t.symbol.includes('EUR') || t.symbol.includes('GBP') ? 10000 : 1)).toFixed(1);
@@ -489,7 +489,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   ],
                 },
               ]
-          ).map((tier) => (
+          ).map((tier: any) => (
             <div key={tier.id} className={`home-account-card ${tier.featured ? 'featured' : ''}`}>
               {tier.badge ? <div className="home-account-badge">{tier.badge}</div> : null}
               <h3 className="home-account-name">{tier.name}</h3>
@@ -513,7 +513,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               </div>
 
               <ul className="home-account-features">
-                {tier.features.map((feat, fidx) => (
+                {tier.features.map((feat: any, fidx: number) => (
                   <li key={fidx} className="home-account-feature-item">
                     <CheckCircle2 size={15} color={tier.featured ? 'var(--accent-primary)' : 'var(--trade-buy)'} />
                     <span>{feat}</span>
@@ -551,7 +551,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             { id: 'wallet', title: 'Unified Multi-Asset Wallet', description: 'Trade Crypto, FX, Gold, Oil, and US Equities from a single consolidated account balance with unified portfolio margin calculations.' },
             { id: 'security', title: 'PBKDF2/SHA-512 Security', description: 'Zero plain-text password storage. All credentials hashed with 100,000 iterations and authenticated over strictly encrypted TLS sessions.' },
             { id: 'liquidity', title: 'Tier-1 Segregated Liquidity', description: 'Direct DMA pricing aggregated from global Tier-1 investment banks and cryptocurrency market makers for maximum book depth.' },
-          ]).map((adv, idx) => (
+          ]).map((adv: any, idx: number) => (
             <div key={adv.id || idx} className="home-advantage-card">
               <div className="home-advantage-icon">
                 {idx === 0 ? <Clock size={22} /> : idx === 1 ? <Zap size={22} /> : idx === 2 ? <Shield size={22} /> : idx === 3 ? <Sliders size={22} /> : idx === 4 ? <Lock size={22} /> : <Award size={22} />}
@@ -672,7 +672,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             { id: 'cards', title: 'Cards & Mobile', subtitle: 'Visa, Mastercard, Apple Pay', fee: 'Instant Funding' },
             { id: 'wire', title: 'Bank Wire & SEPA', subtitle: 'Direct Bank Transfer (USD, EUR)', fee: 'Same-Day Settlement' },
             { id: 'segregated', title: 'Segregated Accounts', subtitle: 'Isolated Tier-1 Bank Storage', fee: '100% Protected' },
-          ]).map((cust, idx) => (
+          ]).map((cust: any, idx: number) => (
             <div key={cust.id || idx} className="home-hero-stat-card">
               {idx === 0 ? (
                 <Wallet size={24} color="var(--accent-primary)" style={{ marginBottom: 12 }} />

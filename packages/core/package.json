@@ -9,8 +9,8 @@
     "test": "tsc && node --test dist/risk/margin.test.js",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
-  "devDependencies": {
+  "dependencies": {
     "typescript": "^5.4.5"
-  }
+  },
+  "devDependencies": {}
 }
