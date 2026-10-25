@@ -91,9 +91,24 @@ const server = http.createServer(app);
 const wsGateway = new MarketWebSocketGateway(server, marketData);
 
 // -------------------------------------------------------------
+// CLIENT ASSET SERVING (Unified Full-Stack Deployment)
+// -------------------------------------------------------------
+const possibleClientDirs = [
+  path.resolve(process.cwd(), 'packages/client/dist'),
+  path.resolve(process.cwd(), 'client/dist'),
+  path.resolve(process.cwd(), 'dist'),
+];
+const clientDistPath = possibleClientDirs.find((dir) => fs.existsSync(path.join(dir, 'index.html')));
+
+if (clientDistPath) {
+  console.log(`[NEXUS SERVER] Serving production client frontend from ${clientDistPath}`);
+  app.use(express.static(clientDistPath));
+}
+
+// -------------------------------------------------------------
 // API ROOT & SYSTEM DISCOVERY
 // -------------------------------------------------------------
-app.get(['/', '/api', '/api/'], (req: Request, res: Response) => {
+app.get(['/api', '/api/'], (req: Request, res: Response) => {
   const hostHeader = req.headers.host || `${host}:${port}`;
   const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
   const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
@@ -105,7 +120,7 @@ app.get(['/', '/api', '/api/'], (req: Request, res: Response) => {
     status: 'ONLINE',
     version: '1.0.0',
     environment: envMode,
-    webTerminal: process.env.CLIENT_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
+    webTerminal: process.env.CLIENT_URL || process.env.CORS_ORIGIN || `${protocol}://${hostHeader}`,
     endpoints: {
       health: '/api/health',
       overview: '/api/admin/overview',
@@ -119,6 +134,12 @@ app.get(['/', '/api', '/api/'], (req: Request, res: Response) => {
     },
   });
 });
+
+if (!clientDistPath) {
+  app.get('/', (req: Request, res: Response) => {
+    res.redirect('/api');
+  });
+}
 
 // -------------------------------------------------------------
 // AUTHENTICATION & IDENTITY ENDPOINTS
@@ -824,6 +845,22 @@ app.post('/api/admin/adjust-balance', (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// -------------------------------------------------------------
+// CLIENT SPA FALLBACK & API ROUTE 404
+// -------------------------------------------------------------
+if (clientDistPath) {
+  app.get('*', (req: Request, res: Response, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
+
+app.all('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({ error: 'API route not found', path: req.path });
 });
 
 // Start Server

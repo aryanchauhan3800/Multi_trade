@@ -1,38 +1,17 @@
-# Render Production Deployment Guide for Nexus Exchange Backend
+# Render Production Deployment Guide for Nexus Exchange (Full-Stack)
 
-This guide outlines the production adaptations implemented in the codebase and provides step-by-step instructions for hosting the backend on [Render](https://render.com).
+This guide provides step-by-step instructions for hosting the complete Nexus Exchange platform (React Trading UI + Express API Gateway + WebSocket Streaming Engine + PostgreSQL) on [Render](https://render.com).
 
 ---
 
-## 1. What Changes Were Made to Make the Code Production-Ready
+## 1. Production Architecture Overview
 
-1. **Infrastructure as Code Blueprint (`render.yaml`)**:
-   - Added automated Render Blueprint configuration specifying the web service, Node runtime, auto-deployments, database linkages, pre-deploy migrations, and health check routes.
-
-2. **Server Port & Host Binding**:
-   - Updated [packages/server/src/server.ts](file:///Users/aryanchauhan/Developer/XNESS/packages/server/src/server.ts) to bind explicitly to `HOST=0.0.0.0` and dynamic `PORT` (Render defaults to `10000`). This ensures the reverse proxy routes traffic properly to the container.
-
-3. **Dynamic CORS Configuration**:
-   - Added support for `CORS_ORIGIN` environment variables, handling wildcard `*` or comma-separated allowed origins (e.g., your Vercel/Render frontend domain) while safely supporting credentials and headers.
-
-4. **Health Check Probes**:
-   - Added `/api/health` and `/healthz` endpoints reporting server status, process uptime, broker connectivity, market data streaming status, and PostgreSQL database connection state for zero-downtime health probing.
-
-5. **Graceful Shutdown**:
-   - Implemented `SIGTERM` and `SIGINT` handlers that close incoming HTTP connections, disconnect all active WebSocket sessions, and cleanly terminate Prisma database pools before process termination.
-
-6. **Prisma & Monorepo Build Scripts**:
-   - Added `build:server`, `start:server`, and `db:deploy` to root [package.json](file:///Users/aryanchauhan/Developer/XNESS/package.json).
-   - Moved `prisma` into production dependencies in [packages/server/package.json](file:///Users/aryanchauhan/Developer/XNESS/packages/server/package.json) so the schema engine is available during build and deployment.
-
-7. **Docker Container Hardening**:
-   - Fixed missing `tsconfig.json` references in [Dockerfile.server](file:///Users/aryanchauhan/Developer/XNESS/Dockerfile.server).
-   - Added Alpine runtime libraries (`openssl`, `libc6-compat`) necessary for Prisma query engines.
-   - Built a deterministic multi-stage build that generates Prisma clients prior to compilation.
-
-8. **Frontend Integration (`config.ts`)**:
-   - Created [packages/client/src/config.ts](file:///Users/aryanchauhan/Developer/XNESS/packages/client/src/config.ts) and typed environment declarations in [packages/client/src/vite-env.d.ts](file:///Users/aryanchauhan/Developer/XNESS/packages/client/src/vite-env.d.ts).
-   - The frontend automatically switches to `VITE_API_URL` and `VITE_WS_URL` when configured, or auto-detects the host in production.
+The codebase is built with a **Unified Full-Stack Deployment Architecture**:
+- **Single Web Service**: A single Render Web Service builds both `@nexus/client` (React + Vite) and `@nexus/server` (Express + WebSockets).
+- **Direct UI Delivery**: Visiting your Render URL (`https://nexus-exchange.onrender.com/`) immediately serves the high-performance Trading Terminal.
+- **Unified Endpoints**: All REST APIs (`/api/*`) and real-time WebSocket feeds (`/ws/market`) run on the same domain and port, completely eliminating CORS friction.
+- **Render Free Tier Optimized**: Consumes only **1 free instance**, easily staying within Render's 750 free monthly hours without exceeding limits.
+- **Cold-Start (~50s) Elimination**: Integrated client-side 10-second wake-up loop + server-side self-ping service (`RENDER_EXTERNAL_URL`).
 
 ---
 
@@ -40,15 +19,25 @@ This guide outlines the production adaptations implemented in the codebase and p
 
 ### Option A: 1-Click Deployment via Render Blueprint (Recommended)
 
-1. Push your repository to **GitHub** or **GitLab**.
+1. Push your repository to **GitHub**:
+   ```bash
+   git add .
+   git commit -m "deploy: update Render configuration and full-stack build"
+   git push origin main
+   ```
 2. Log into your [Render Dashboard](https://dashboard.render.com/).
 3. In the top navigation, click **New +** and select **Blueprint**.
-4. Connect your repository (`Multi_trade` / `XNESS`).
+4. Connect your repository (`aryanchauhan3800/Multi_trade`).
 5. Render will automatically detect the [render.yaml](file:///Users/aryanchauhan/Developer/XNESS/render.yaml) file and display the planned resources:
-   - **`nexus-exchange-backend`** (Web Service)
+   - **`nexus-exchange`** (Web Service - Node)
    - **`nexus-postgres`** (Managed PostgreSQL Database)
 6. Click **Apply Blueprint**.
-7. Render will provision the database, generate cryptographic keys for `JWT_SECRET` and `COOKIE_SECRET`, run `npm run db:deploy`, and start the backend service.
+7. Render will automatically:
+   - Provision the PostgreSQL database
+   - Generate secure random keys for `JWT_SECRET` and `COOKIE_SECRET`
+   - Run `npm run build:server` (builds core, client, Prisma, and server)
+   - Run `npm run db:deploy` (syncs schema to PostgreSQL)
+   - Start the service with `npm run start:server`
 
 ---
 

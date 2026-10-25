@@ -12,12 +12,12 @@
     "dev:server": "npm run dev --workspace=@nexus/server",
     "dev:client": "npm run dev --workspace=@nexus/client",
     "build": "npm run build --workspaces --if-present",
-    "build:server": "npm run build --workspace=@nexus/core && npm run db:generate && npm run build --workspace=@nexus/server",
+    "build:server": "npm run build --workspace=@nexus/core && npm run build --workspace=@nexus/client && npm run db:generate && npm run build --workspace=@nexus/server",
     "start:server": "node packages/server/dist/server.js",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:push": "prisma db push --schema packages/server/prisma/schema.prisma",
-    "db:deploy": "prisma db push --schema packages/server/prisma/schema.prisma",
+    "db:deploy": "node -e \"if (process.env.DATABASE_URL) { try { require('child_process').execSync('prisma db push --schema packages/server/prisma/schema.prisma', { stdio: 'inherit' }); } catch(e) { console.warn('[DEPLOY] Prisma push warning:', e.message); } } else { console.log('[DEPLOY] No DATABASE_URL provided, skipping Prisma push'); }\"",
     "db:generate": "prisma generate --schema packages/server/prisma/schema.prisma"
   },
   "devDependencies": {

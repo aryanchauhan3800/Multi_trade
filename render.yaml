@@ -5,12 +5,12 @@ version: "1"
 
 services:
   # ---------------------------------------------------------------------------
-  # BACKEND WEB SERVICE (API Gateway & WebSocket Server)
+  # UNIFIED FULL-STACK WEB SERVICE (Trading UI + API + WebSocket Server)
   # ---------------------------------------------------------------------------
   - type: web
-    name: nexus-exchange-backend
+    name: nexus-exchange
     runtime: node
-    plan: starter # Change to 'free' or other tiers as needed
+    plan: free
     region: oregon
     buildCommand: npm run build:server
     preDeployCommand: npm run db:deploy
