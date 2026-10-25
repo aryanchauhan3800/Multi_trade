@@ -150,7 +150,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
 
   // Filtered symbols
   const filteredTickers = useMemo(() => {
-    return Array.from(tickers.values()).filter((ticker) => {
+    return Array.from(tickers.values()).filter((ticker: TickerData) => {
       // Category filter
       if (activeTab !== 'All') {
         const cat = symbolCategoryMap[ticker.symbol];
@@ -214,7 +214,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
           className="watchlist-search-input"
           placeholder="Search symbols..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
         />
       </div>
 
@@ -227,7 +227,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
 
       {/* Symbol Rows */}
       <div className="watchlist-list-container">
-        {filteredTickers.map((ticker) => {
+        {filteredTickers.map((ticker: TickerData) => {
           const isSelected = selectedSymbol === ticker.symbol;
           const isFav = favorites.has(ticker.symbol);
           const isPositive = ticker.change24h >= 0;
@@ -251,7 +251,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
                 <button
                   type="button"
                   className="star-btn"
-                  onClick={(e) => toggleFavorite(e, ticker.symbol)}
+                  onClick={(e: React.MouseEvent) => toggleFavorite(e, ticker.symbol)}
                   title={isFav ? 'Remove from favorites' : 'Add to favorites'}
                 >
                   <Star

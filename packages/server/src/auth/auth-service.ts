@@ -194,7 +194,7 @@ export class AuthService {
             },
           },
         })
-        .catch((e) => console.warn('[DATABASE] Async user sync error:', e.message));
+        .catch((e: any) => console.warn('[DATABASE] Async user sync error:', e.message));
     }
 
     return {

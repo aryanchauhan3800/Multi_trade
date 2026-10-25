@@ -85,7 +85,7 @@ export function useBackendKeepAlive(options: UseBackendKeepAliveOptions = {}): B
       retryCountRef.current += 1;
       setRetryCount(retryCountRef.current);
       isOnlineRef.current = false;
-      setStatus((prev) => (prev === 'ONLINE' ? 'OFFLINE' : 'WAKING_UP'));
+      setStatus((prev: BackendStatus) => (prev === 'ONLINE' ? 'OFFLINE' : 'WAKING_UP'));
       return false;
     }
   }, [onServerReady]);
@@ -122,7 +122,7 @@ export function useBackendKeepAlive(options: UseBackendKeepAliveOptions = {}): B
   useEffect(() => {
     if (status === 'WAKING_UP') {
       countdownTimerRef.current = setInterval(() => {
-        setCountdown((prev) => (prev > 1 ? prev - 1 : 1));
+        setCountdown((prev: number) => (prev > 1 ? prev - 1 : 1));
       }, 1000);
     } else if (status === 'ONLINE') {
       if (countdownTimerRef.current) {
