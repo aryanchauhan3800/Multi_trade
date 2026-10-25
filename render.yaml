@@ -1,11 +1,11 @@
-# Render Infrastructure as Code Blueprint
+# Render Infrastructure as Code Blueprint - 100% Free Forever Setup
 # https://render.com/docs/blueprint-spec
 
 version: "1"
 
 services:
   # ---------------------------------------------------------------------------
-  # UNIFIED FULL-STACK WEB SERVICE (Trading UI + API + WebSocket Server)
+  # UNIFIED FULL-STACK WEB SERVICE (100% Free Web Service - No Credit Card Needed)
   # ---------------------------------------------------------------------------
   - type: web
     name: nexus-exchange
@@ -38,12 +38,10 @@ services:
         generateValue: true
       - key: COOKIE_SECRET
         generateValue: true
-      # Database connection (automatically wired to the managed PostgreSQL below)
+      # Optional: Neon.tech / Supabase free permanent PostgreSQL URL (leave empty for built-in high-performance mode)
       - key: DATABASE_URL
-        fromDatabase:
-          name: nexus-postgres
-          property: connectionString
-      # Optional external exchange & broker integrations
+        sync: false
+      # Optional external broker & exchange integrations
       - key: BINANCE_API_KEY
         sync: false
       - key: BINANCE_API_SECRET
@@ -60,13 +58,3 @@ services:
         sync: false
       - key: COINBASE_COMMERCE_API_KEY
         sync: false
-
-# ---------------------------------------------------------------------------
-# MANAGED POSTGRESQL DATABASE
-# ---------------------------------------------------------------------------
-databases:
-  - name: nexus-postgres
-    databaseName: nexus_trading
-    user: nexus_admin
-    plan: free # or starter
-    region: oregon

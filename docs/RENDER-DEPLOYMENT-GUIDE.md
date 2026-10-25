@@ -29,15 +29,17 @@ The codebase is built with a **Unified Full-Stack Deployment Architecture**:
 3. In the top navigation, click **New +** and select **Blueprint**.
 4. Connect your repository (`aryanchauhan3800/Multi_trade`).
 5. Render will automatically detect the [render.yaml](file:///Users/aryanchauhan/Developer/XNESS/render.yaml) file and display the planned resources:
-   - **`nexus-exchange`** (Web Service - Node)
-   - **`nexus-postgres`** (Managed PostgreSQL Database)
+   - **`nexus-exchange`** (Web Service — Free Tier, Node runtime)
 6. Click **Apply Blueprint**.
 7. Render will automatically:
-   - Provision the PostgreSQL database
-   - Generate secure random keys for `JWT_SECRET` and `COOKIE_SECRET`
-   - Run `npm run build:server` (builds core, client, Prisma, and server)
-   - Run `npm run db:deploy` (syncs schema to PostgreSQL)
-   - Start the service with `npm run start:server`
+   - Configure the **Free** web service tier (no credit card required).
+   - Generate secure random keys for `JWT_SECRET` and `COOKIE_SECRET`.
+   - Run `npm run build:server` (builds core, client, and server).
+   - Start the service with `npm run start:server`.
+   - Your trading terminal will be live at `https://<service-name>.onrender.com/`!
+
+> [!TIP]
+> **Database**: The server runs out-of-the-box in built-in paper-trading mode with pre-seeded demo balances. If you want a persistent PostgreSQL database for free forever, create a free database at [Neon.tech](https://neon.tech) and paste its connection string into `DATABASE_URL` in the Render dashboard. Unlike Render's database which expires in 30 days, Neon is 100% free forever.
 
 ---
 
