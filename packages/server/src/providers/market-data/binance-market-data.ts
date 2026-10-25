@@ -281,9 +281,29 @@ export class BinanceMarketDataProvider implements MarketDataProvider {
       '1D': '1d',
     };
     const interval = intervalMap[timeframe] || '15m';
-    const res = await fetch(`${this.restUrl}/klines?symbol=${bSymbol}&interval=${interval}&limit=${limit}`);
-    if (!res.ok) throw new Error(`Failed to fetch Binance candles for ${symbol}`);
-    const rawCandles = await res.json() as any[][];
+
+    const urls = [
+      `${this.restUrl}/klines?symbol=${bSymbol}&interval=${interval}&limit=${limit}`,
+      `https://api.binance.us/api/v3/klines?symbol=${bSymbol}&interval=${interval}&limit=${limit}`,
+      `https://data-api.binance.vision/api/v3/klines?symbol=${bSymbol}&interval=${interval}&limit=${limit}`,
+    ];
+
+    let rawCandles: any[][] | null = null;
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+        if (res.ok) {
+          rawCandles = (await res.json()) as any[][];
+          if (Array.isArray(rawCandles) && rawCandles.length > 0) break;
+        }
+      } catch (_err) {
+        continue;
+      }
+    }
+
+    if (!rawCandles || !Array.isArray(rawCandles)) {
+      throw new Error(`Failed to fetch Binance candles for ${symbol}`);
+    }
 
     return rawCandles.map((c) => ({
       timestamp: c[0],

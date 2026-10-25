@@ -191,9 +191,10 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
     if (currentPrice > 0 && isFinite(minPrice) && isFinite(maxPrice)) {
       const candleAvg = (minPrice + maxPrice) / 2;
-      // Sanity check: Only incorporate currentPrice if within 0.35x to 2.8x of candle average
-      // to prevent cross-symbol price glitches from breaking the y-axis
-      if (currentPrice >= candleAvg * 0.35 && currentPrice <= candleAvg * 2.8) {
+      // Pro Scale Protection: Only expand axis if currentPrice is within 3.5% of the candle range.
+      // This guarantees candles always occupy the full chart canvas and never get squished to the bottom.
+      const maxAllowedDev = candleAvg * 0.035;
+      if (currentPrice >= minPrice - maxAllowedDev && currentPrice <= maxPrice + maxAllowedDev) {
         if (currentPrice < minPrice) minPrice = currentPrice;
         if (currentPrice > maxPrice) maxPrice = currentPrice;
       }

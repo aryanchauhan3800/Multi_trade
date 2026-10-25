@@ -153,21 +153,32 @@ export class MockMarketDataProvider implements MarketDataProvider {
     };
   }
 
-  public async getCandles(symbol: string, timeframe: string, limit = 100): Promise<CandleData[]> {
+  public async getCandles(symbol: string, timeframe: string = '15m', limit = 100): Promise<CandleData[]> {
     const ticker = await this.getTicker(symbol);
     const candles: CandleData[] = [];
-    let currentClose = ticker.lastPrice * 0.95;
-    const intervalMs = 60 * 1000; // 1m default
+    let currentPrice = ticker.lastPrice;
+
+    const tfMinutes: Record<string, number> = {
+      '1m': 1,
+      '5m': 5,
+      '15m': 15,
+      '1h': 60,
+      '4h': 240,
+      '1d': 1440,
+      '1w': 10080,
+    };
+    const intervalMs = (tfMinutes[timeframe.toLowerCase()] || 15) * 60 * 1000;
     const now = Date.now();
 
-    for (let i = limit; i >= 0; i--) {
+    // Generate historical candles backwards from current price so the latest candle is 100% in sync
+    for (let i = 0; i < limit; i++) {
       const time = now - i * intervalMs;
       const variation = (Math.random() - 0.49) * (ticker.lastPrice * 0.002);
-      const open = currentClose;
-      const close = open + variation;
+      const close = currentPrice;
+      const open = close - variation;
       const high = Math.max(open, close) + Math.random() * (ticker.lastPrice * 0.001);
       const low = Math.min(open, close) - Math.random() * (ticker.lastPrice * 0.001);
-      const volume = Math.random() * 10 + 1;
+      const volume = Math.random() * 25 + 2;
 
       candles.push({
         timestamp: time,
@@ -178,10 +189,11 @@ export class MockMarketDataProvider implements MarketDataProvider {
         volume: Number(volume.toFixed(2)),
       });
 
-      currentClose = close;
+      currentPrice = open;
     }
 
-    return candles;
+    // Chronological order: oldest to most recent
+    return candles.reverse();
   }
 
   public async getTradableSymbols(): Promise<string[]> {
