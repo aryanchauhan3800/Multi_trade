@@ -12,6 +12,7 @@
     "dev:server": "npm run dev --workspace=@nexus/server",
     "dev:client": "npm run dev --workspace=@nexus/client",
     "build": "npm run build --workspace=@nexus/core && npm run build --workspace=@nexus/client && npm run db:generate && npm run build --workspace=@nexus/server",
+    "build:client": "npm run build --workspace=@nexus/core && npm run build --workspace=@nexus/client",
     "build:server": "npm run build --workspace=@nexus/core && npm run build --workspace=@nexus/client && npm run db:generate && npm run build --workspace=@nexus/server",
     "start:server": "node packages/server/dist/server.js",
     "test": "npm run test --workspaces --if-present",
