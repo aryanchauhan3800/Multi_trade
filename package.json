@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n \"SERVER,CLIENT\" -c \"magenta,cyan\" \"npm run dev:server\" \"npm run dev:client\"",
-    "start": "concurrently -n \"SERVER,CLIENT\" -c \"magenta,cyan\" \"npm run dev:server\" \"npm run dev:client\"",
+    "start": "node packages/server/dist/server.js",
     "dev:server": "npm run dev --workspace=@nexus/server",
     "dev:client": "npm run dev --workspace=@nexus/client",
     "build": "npm run build --workspace=@nexus/core && npm run build --workspace=@nexus/client && npm run db:generate && npm run build --workspace=@nexus/server",
