@@ -52,6 +52,10 @@ interface TopNavProps {
   brokerName?: string;
   activeNavTab?: string;
   onSelectNavTab?: (tab: string) => void;
+  serverStatus?: 'CHECKING' | 'WAKING_UP' | 'ONLINE' | 'OFFLINE';
+  serverLatency?: number | null;
+  serverCountdown?: number;
+  onOpenServerStatus?: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -75,6 +79,10 @@ export const TopNav: React.FC<TopNavProps> = ({
   brokerName,
   activeNavTab = 'trading',
   onSelectNavTab,
+  serverStatus,
+  serverLatency,
+  serverCountdown,
+  onOpenServerStatus,
 }) => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -224,6 +232,77 @@ export const TopNav: React.FC<TopNavProps> = ({
 
       {/* Right: Theme Toggle, Notifications & Profile */}
       <div className="nav-right">
+        {/* Server Connection / Render Keep-Alive Status Pill */}
+        {serverStatus && (
+          <div
+            className="server-status-pill"
+            onClick={onOpenServerStatus}
+            title={
+              serverStatus === 'ONLINE'
+                ? `Backend Online (Latency: ${serverLatency !== null ? serverLatency + 'ms' : 'Active'} • 10s Heartbeat Active)`
+                : serverStatus === 'WAKING_UP'
+                ? `Render Backend Waking Up: ~${serverCountdown || 50}s (Cold Start) • Pinging every 10s`
+                : 'Connecting to Cloud Backend...'
+            }
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 10px',
+              borderRadius: '16px',
+              background:
+                serverStatus === 'ONLINE'
+                  ? 'rgba(16, 185, 129, 0.1)'
+                  : serverStatus === 'WAKING_UP'
+                  ? 'rgba(245, 158, 11, 0.15)'
+                  : 'rgba(148, 163, 184, 0.12)',
+              border:
+                serverStatus === 'ONLINE'
+                  ? '1px solid rgba(16, 185, 129, 0.25)'
+                  : serverStatus === 'WAKING_UP'
+                  ? '1px solid rgba(245, 158, 11, 0.35)'
+                  : '1px solid var(--border-subtle, #e2e8f0)',
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 600,
+              color:
+                serverStatus === 'ONLINE'
+                  ? 'var(--trade-buy, #10b981)'
+                  : serverStatus === 'WAKING_UP'
+                  ? '#d97706'
+                  : 'var(--text-secondary, #64748b)',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background:
+                  serverStatus === 'ONLINE'
+                    ? '#10b981'
+                    : serverStatus === 'WAKING_UP'
+                    ? '#f59e0b'
+                    : '#94a3b8',
+                boxShadow:
+                  serverStatus === 'ONLINE'
+                    ? '0 0 6px #10b981'
+                    : serverStatus === 'WAKING_UP'
+                    ? '0 0 6px #f59e0b'
+                    : 'none',
+              }}
+            />
+            <span style={{ fontFamily: 'var(--font-mono, monospace)', letterSpacing: '-0.01em' }}>
+              {serverStatus === 'ONLINE'
+                ? `${serverLatency !== null ? `${serverLatency}ms` : 'ONLINE'}`
+                : serverStatus === 'WAKING_UP'
+                ? `Waking ~${serverCountdown}s`
+                : 'CONNECTING'}
+            </span>
+          </div>
+        )}
+
         {/* Live Real Money Status Pill (Subtle & Clean) */}
         <div
           className="live-status-pill"

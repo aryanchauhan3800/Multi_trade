@@ -143,3 +143,37 @@ VITE_WS_URL=wss://<your-service-name>.onrender.com/ws/market
 ```
 
 The client will automatically route all authentication, order placement, margin checks, and live price streams to your Render backend.
+
+---
+
+## 5. Render Free-Tier Cold-Starts (~50s) & Keep-Alive Automation
+
+### How Render Free Tier Works
+Render's free tier spins down (puts to sleep) web services after **15 minutes of zero HTTP traffic**. When a user arrives, the server takes **~50 seconds** to boot up (cold start).
+
+### How Our Codebase Solves This Problem
+
+1. **Client-Side 50-Second Countdown & 10-Second Warmup Loop**:
+   - When users open the web application, the frontend immediately probes `/api/ping`.
+   - If the backend is asleep, the frontend displays an interactive **Render Cold-Start HUD**:
+     - Shows an animated 50-second countdown and progress bar.
+     - Pings the server **every 10 seconds** until HTTP 200 is received.
+     - Automatically resumes data streams, fetches tickers, and reconnects WebSockets the instant the server wakes up.
+   - Shows a live latency badge in the top navigation (`⚡ Server: 35ms` or `⏳ Waking: ~32s`).
+
+2. **Continuous 10-Second Heartbeat While Browsing**:
+   - Once online, the client continues sending a lightweight `/api/ping` request every 10 seconds.
+   - This prevents Render from putting the backend to sleep as long as anyone has the platform open.
+
+3. **Backend Server-Side Self-Ping Worker (`packages/server/src/gateway/keep-alive.ts`)**:
+   - When deployed on Render, Render automatically assigns `RENDER_EXTERNAL_URL`.
+   - The backend runs a background worker that pings itself every 10 minutes (`KEEP_ALIVE_INTERVAL_MINUTES=10`), keeping the container active.
+
+4. **100% 24/7 Awake Setup with Free External Cron Monitors**:
+   If you want your backend to **NEVER sleep** even when no users have the browser open:
+   - Go to [Cron-Job.org](https://cron-job.org) or [UptimeRobot](https://uptimerobot.com) (both 100% free).
+   - Create a HTTP monitor:
+     - **URL**: `https://<your-service-name>.onrender.com/api/ping`
+     - **Interval**: Every `10 minutes`
+   - Render gives **750 free instance hours per month** (a 31-day month has 744 hours), which is enough to run one free service 24/7 without incurring charges.
+

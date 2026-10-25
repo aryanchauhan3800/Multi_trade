@@ -24,14 +24,23 @@ export class MockMarketDataProvider implements MarketDataProvider {
     const defaultSymbols: Array<{ symbol: string; price: number; spread: number }> = [
       { symbol: 'BTCUSD', price: 94820.5, spread: 0.6 },
       { symbol: 'ETHUSD', price: 3420.2, spread: 0.15 },
+      { symbol: 'SOLUSD', price: 102.5, spread: 0.05 },
+      { symbol: 'BNBUSD', price: 615.0, spread: 0.2 },
+      { symbol: 'XRPUSD', price: 2.35, spread: 0.001 },
+      { symbol: 'DOGEUSD', price: 0.38, spread: 0.0002 },
+      { symbol: 'ADAUSD', price: 0.85, spread: 0.0005 },
+      { symbol: 'AVAXUSD', price: 38.5, spread: 0.02 },
+      { symbol: 'LINKUSD', price: 18.2, spread: 0.01 },
+      { symbol: 'DOTUSD', price: 8.4, spread: 0.005 },
+      { symbol: 'NEARUSD', price: 6.8, spread: 0.004 },
       { symbol: 'EURUSD', price: 1.0842, spread: 0.0001 },
       { symbol: 'GBPUSD', price: 1.2985, spread: 0.00015 },
       { symbol: 'USDJPY', price: 154.6, spread: 0.015 },
-      { symbol: 'XAUUSD', price: 2714.5, spread: 0.25 },
-      { symbol: 'WTI', price: 78.4, spread: 0.03 },
-      { symbol: 'AAPL', price: 232.1, spread: 0.04 },
-      { symbol: 'NVDA', price: 141.5, spread: 0.05 },
-      { symbol: 'SPX', price: 5860.2, spread: 0.5 },
+      { symbol: 'XAUUSD', price: 4000.0, spread: 0.25 },
+      { symbol: 'WTI', price: 103.2, spread: 0.03 },
+      { symbol: 'AAPL', price: 347.725, spread: 0.04 },
+      { symbol: 'NVDA', price: 210.96, spread: 0.05 },
+      { symbol: 'SPX', price: 760.0, spread: 0.5 },
     ];
 
     const now = Date.now();
@@ -96,9 +105,25 @@ export class MockMarketDataProvider implements MarketDataProvider {
   }
 
   public async getTicker(symbol: string): Promise<TickerData> {
-    const ticker = this.tickers.get(symbol);
+    const sym = symbol.toUpperCase();
+    let ticker = this.tickers.get(sym);
     if (!ticker) {
-      throw new Error(`Symbol ${symbol} not supported by MockMarketDataProvider`);
+      // Create fallback ticker on the fly rather than crashing
+      const fallbackPrice = 100.0;
+      const spread = 0.05;
+      ticker = {
+        symbol: sym,
+        bid: Number((fallbackPrice - spread / 2).toFixed(5)),
+        ask: Number((fallbackPrice + spread / 2).toFixed(5)),
+        lastPrice: fallbackPrice,
+        spread,
+        volume24h: 15420.5,
+        high24h: fallbackPrice * 1.025,
+        low24h: fallbackPrice * 0.985,
+        change24h: 0.85,
+        timestamp: Date.now(),
+      };
+      this.tickers.set(sym, ticker);
     }
     return { ...ticker };
   }

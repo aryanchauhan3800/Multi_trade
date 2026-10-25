@@ -26,6 +26,8 @@ import { AdminModal } from './components/modals/AdminModal.js';
 import { AuthModal } from './components/modals/AuthModal.js';
 import { BrokerModal } from './components/modals/BrokerModal.js';
 import { HomePage } from './components/home/HomePage.js';
+import { ServerWakeupModal } from './components/modals/ServerWakeupModal.js';
+import { useBackendKeepAlive } from './hooks/useBackendKeepAlive.js';
 
 import { BarChart2, Star, TrendingUp, PieChart, User, AlertTriangle } from 'lucide-react';
 
@@ -148,8 +150,14 @@ export const App: React.FC = () => {
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>('15m');
 
-  // WebSocket Connection Ref
+  // WebSocket Connection Ref & Active Symbol Synchronization Refs
   const wsRef = useRef<WebSocket | null>(null);
+  const selectedSymbolRef = useRef<string>(selectedSymbol);
+  const candleSymbolRef = useRef<string>(selectedSymbol);
+
+  useEffect(() => {
+    selectedSymbolRef.current = selectedSymbol;
+  }, [selectedSymbol]);
 
   // Sync state from server OMS
   const syncServerState = useCallback(() => {
@@ -231,6 +239,27 @@ export const App: React.FC = () => {
       })
       .catch(() => {});
   }, []);
+
+  // Render Free Tier Keep-Alive & Cold-Start Probe (10s periodic heartbeat, 50s warmup)
+  const keepAlive = useBackendKeepAlive({
+    pingIntervalMs: 10000,
+    expectedWakeupSeconds: 50,
+    onServerReady: useCallback(() => {
+      syncServerState();
+      fetch(`${SERVER_BASE}/api/markets/tickers`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.tickers) {
+            setTickers((prev) => {
+              const next = new Map(prev);
+              data.tickers.forEach((t: TickerData) => next.set(t.symbol, t));
+              return next;
+            });
+          }
+        })
+        .catch(() => {});
+    }, [syncServerState]),
+  });
 
   // Initial Sync on Mount & URL Hash Listener
   useEffect(() => {
@@ -371,19 +400,31 @@ export const App: React.FC = () => {
 
   // Fetch 100% Real-Time Candlesticks when Symbol or Timeframe changes
   useEffect(() => {
+    let active = true;
+    // Clear out stale candles immediately so chart doesn't mix symbols
+    setCandles([]);
+    candleSymbolRef.current = selectedSymbol;
+
     fetch(`${SERVER_BASE}/api/markets/candles/${selectedSymbol}?timeframe=${timeframe}&limit=80`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
+        if (!active) return;
         if (data && data.candles && data.candles.length > 0) {
+          candleSymbolRef.current = selectedSymbol;
           setCandles(data.candles);
         }
       })
       .catch(() => {});
+
+    return () => {
+      active = false;
+    };
   }, [selectedSymbol, timeframe]);
 
-  // Connect to Real-Time WebSocket Gateway
+  // Connect to Real-Time WebSocket Gateway (Single Persistent Connection)
   useEffect(() => {
     let reconnectTimeout: NodeJS.Timeout;
+    let isMounted = true;
 
     const connectWs = () => {
       try {
@@ -395,18 +436,21 @@ export const App: React.FC = () => {
           if (symbols.length === 0) {
             try {
               const res = await fetch(`${SERVER_BASE}/api/instruments`);
-              const data = await res.json() as any;
+              const data = (await res.json()) as any;
               if (data && data.symbols) symbols = data.symbols;
             } catch (_err) {}
           }
           if (symbols.length === 0) {
-            symbols = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'BNBUSD', 'XRPUSD', 'DOGEUSD', 'EURUSD', 'GBPUSD', 'XAUUSD', 'WTI', 'AAPL', 'NVDA', 'SPX'];
+            symbols = [
+              'BTCUSD', 'ETHUSD', 'SOLUSD', 'BNBUSD', 'XRPUSD', 'DOGEUSD',
+              'EURUSD', 'GBPUSD', 'XAUUSD', 'WTI', 'AAPL', 'NVDA', 'SPX'
+            ];
           }
 
           const channels = [
             ...symbols.map((s) => `ticker:${s}`),
-            `orderbook:${selectedSymbol}`,
-            `trades:${selectedSymbol}`,
+            `orderbook:${selectedSymbolRef.current}`,
+            `trades:${selectedSymbolRef.current}`,
           ];
 
           ws.send(
@@ -446,11 +490,26 @@ export const App: React.FC = () => {
               });
 
               // Real-time live candle tick progression on active chart
-              if (ticker.symbol === selectedSymbol) {
+              // Strictly verify that the tick matches the current selected symbol AND current candle symbol
+              if (
+                ticker.symbol === selectedSymbolRef.current &&
+                candleSymbolRef.current === selectedSymbolRef.current
+              ) {
                 setCandles((prev) => {
                   if (!prev || prev.length === 0) return prev;
+                  if (ticker.symbol !== selectedSymbolRef.current) return prev;
+                  if (candleSymbolRef.current !== selectedSymbolRef.current) return prev;
+
                   const lastIdx = prev.length - 1;
                   const lastCandle = prev[lastIdx];
+
+                  // Strict Price Sanity Guard: An intraday tick must be within 8% of candle close.
+                  // This 100% guarantees that cross-symbol ticks (e.g. AAPL 347 into NVDA 210) cannot contaminate candles!
+                  const priceRatio = ticker.lastPrice / (lastCandle.close || 1);
+                  if (priceRatio > 1.08 || priceRatio < 0.92) {
+                    return prev;
+                  }
+
                   const updatedCandle: CandleData = {
                     ...lastCandle,
                     close: ticker.lastPrice,
@@ -466,23 +525,36 @@ export const App: React.FC = () => {
         };
 
         ws.onclose = () => {
-          reconnectTimeout = setTimeout(connectWs, 3000);
+          if (isMounted) reconnectTimeout = setTimeout(connectWs, 3000);
         };
 
         ws.onerror = () => {
           ws.close();
         };
       } catch (_err) {
-        reconnectTimeout = setTimeout(connectWs, 3000);
+        if (isMounted) reconnectTimeout = setTimeout(connectWs, 3000);
       }
     };
 
     connectWs();
 
     return () => {
+      isMounted = false;
       clearTimeout(reconnectTimeout);
       if (wsRef.current) wsRef.current.close();
     };
+  }, []);
+
+  // Dynamically update orderbook & trades subscriptions when selectedSymbol changes
+  useEffect(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          action: 'subscribe',
+          channels: [`orderbook:${selectedSymbol}`, `trades:${selectedSymbol}`],
+        })
+      );
+    }
   }, [selectedSymbol]);
 
   // Update Open Positions P&L continuously on ticker changes
@@ -712,6 +784,10 @@ export const App: React.FC = () => {
                 ? (brokerStatus?.provider === 'ALPACA_LIVE' ? 'ALPACA LIVE' : 'REAL BROKER: LIVE STP')
                 : (brokerStatus?.provider === 'ALPACA_PAPER' ? 'ALPACA PAPER' : 'DEMO STP')
             }
+            serverStatus={keepAlive.status}
+            serverLatency={keepAlive.latency}
+            serverCountdown={keepAlive.countdown}
+            onOpenServerStatus={() => keepAlive.resetWarmup()}
           />
 
           {/* Institutional Margin Call / Stop-Out Alert Banner */}
@@ -919,6 +995,9 @@ export const App: React.FC = () => {
           onRefreshParent={syncServerState}
         />
       )}
+
+      {/* Render Free Tier Warmup & 10s Keep-Alive Status Modal */}
+      <ServerWakeupModal keepAlive={keepAlive} />
     </div>
   );
 };

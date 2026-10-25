@@ -28,6 +28,11 @@ services:
         value: PAPER_TRADING
       - key: CORS_ORIGIN
         value: '*'
+      # Render Free Tier Keep-Alive Configuration
+      - key: KEEP_ALIVE_ENABLED
+        value: 'true'
+      - key: KEEP_ALIVE_INTERVAL_MINUTES
+        value: '10'
       # Auto-generated high-entropy cryptographic secrets
       - key: JWT_SECRET
         generateValue: true

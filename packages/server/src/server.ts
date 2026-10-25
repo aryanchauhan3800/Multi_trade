@@ -13,6 +13,7 @@ import { OrderEngine } from './engine/order-engine.js';
 import { PaymentGateway } from './providers/payment/payment-gateway.js';
 import { AuthService } from './auth/auth-service.js';
 import { initDatabaseConnection, isDbConnected, closeDatabaseConnection } from './db/prisma.js';
+import { startKeepAliveService, stopKeepAliveService } from './gateway/keep-alive.js';
 import { EnvironmentMode, PlatformMarketingData, AccountTierSpec } from '@nexus/core';
 
 dotenv.config();
@@ -193,6 +194,16 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
 // -------------------------------------------------------------
 // REST API ENDPOINTS
 // -------------------------------------------------------------
+
+// Ultra-lightweight Ping endpoint for Render Keep-Alive & Client Latency Probes
+app.get(['/api/ping', '/ping'], (_req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ONLINE',
+    pong: true,
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: Date.now(),
+  });
+});
 
 // System Health Probe (Render / Kubernetes compatible)
 app.get(['/api/health', '/healthz'], (_req: Request, res: Response) => {
@@ -819,6 +830,9 @@ app.post('/api/admin/adjust-balance', (req: Request, res: Response) => {
 server.listen(port, host, () => {
   console.log(`[NEXUS SERVER] Running on http://${host}:${port} (NODE_ENV: ${process.env.NODE_ENV || 'development'})`);
   console.log(`[NEXUS SERVER] WebSocket Gateway available at ws://${host}:${port}/ws/market`);
+
+  // Start automated keep-alive self-ping for Render free tier
+  startKeepAliveService();
 });
 
 // Graceful Shutdown for Cloud Environments (Render, Docker, Kubernetes)
@@ -827,6 +841,9 @@ const shutdown = (signal: string) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`[NEXUS SERVER] Received ${signal}. Initiating graceful shutdown...`);
+
+  // Stop keep-alive timers
+  stopKeepAliveService();
 
   server.close(async () => {
     console.log('[NEXUS SERVER] HTTP server closed.');

@@ -134,6 +134,15 @@
       "role": "TRADER",
       "accountId": "acc_usr_1792788491637_dlvo",
       "createdAt": "2026-10-23T20:48:11.637Z"
+    },
+    {
+      "id": "usr_1792892844004_ai0t",
+      "email": "trader.unit.test.1792892843981@nexus.exchange",
+      "passwordHash": "198723e85aec1a35488b92178acc4fd14b714614f61f7968e00c8dffd8981a48d45dc0ec924f73899b13bfca97ad96b824f9ee6e137d4e9a944dbdfc09743a5e",
+      "salt": "6043edc01540b8668a4eb8fb70d1e18a",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792892844004_ai0t",
+      "createdAt": "2026-10-25T01:47:24.004Z"
     }
   ],
   "sessions": [
@@ -228,15 +237,6 @@
       "expiresAt": 1793390579552
     },
     {
-      "token": "nxt_d0b1aa0906e3ff0b4e627358ec43520dad2b59ddbcfaf7892fc6b38c2aa7c32d",
-      "userId": "usr_1792785352728_vlou",
-      "email": "aryan3800chauhan@gmail.com",
-      "role": "TRADER",
-      "accountId": "acc_usr_1792785352728_vlou",
-      "createdAt": 1792786638583,
-      "expiresAt": 1793391438583
-    },
-    {
       "token": "nxt_52400f28fd12d2673b0f9978f41d186f8e99e189baed9f2cd567f15f9194080f",
       "userId": "usr_admin_vy6k",
       "email": "admin@nexus.exchange",
@@ -316,6 +316,33 @@
       "accountId": "acc_usr_1792788491637_dlvo",
       "createdAt": 1792788491637,
       "expiresAt": 1793393291637
+    },
+    {
+      "token": "nxt_ff2dcc64f4e845e667bd2cc9ebc22ac08b79cf18b222e4d6d3f9e9e270b27927",
+      "userId": "usr_1792785352728_vlou",
+      "email": "aryan3800chauhan@gmail.com",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792785352728_vlou",
+      "createdAt": 1792892690985,
+      "expiresAt": 1793497490985
+    },
+    {
+      "token": "nxt_1fe20354f2fc3167da3b1aa2676ed16c72e1f8b9d8b61cbfc25964e9229b2449",
+      "userId": "usr_admin_vy6k",
+      "email": "admin@nexus.exchange",
+      "role": "ADMIN",
+      "accountId": "acc_default",
+      "createdAt": 1792892843952,
+      "expiresAt": 1793497643952
+    },
+    {
+      "token": "nxt_4d577c920d30ba3b0cea688c7f9cdabf75db402e5ebb5f5a74dd9ae15d3b31e9",
+      "userId": "usr_1792892844004_ai0t",
+      "email": "trader.unit.test.1792892843981@nexus.exchange",
+      "role": "TRADER",
+      "accountId": "acc_usr_1792892844004_ai0t",
+      "createdAt": 1792892844005,
+      "expiresAt": 1793497644005
     }
   ]
 }

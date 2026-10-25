@@ -71,38 +71,61 @@ export class CompositeMarketDataProvider implements MarketDataProvider {
   }
 
   private selectProvider(symbol: string): MarketDataProvider {
-    if (this.cryptoSymbols.has(symbol) && this.binance.isConnected) {
+    const sym = symbol.toUpperCase();
+    if (this.cryptoSymbols.has(sym)) {
       return this.binance;
     }
-    if (this.realSymbols.has(symbol) && this.realStock.isConnected) {
+    if (this.realSymbols.has(sym)) {
       return this.realStock;
     }
     return this.mock;
   }
 
   public async getTicker(symbol: string): Promise<TickerData> {
-    try {
-      return await this.selectProvider(symbol).getTicker(symbol);
-    } catch (_err) {
-      // Fallback
-      return await this.mock.getTicker(symbol);
+    const sym = symbol.toUpperCase();
+    if (this.cryptoSymbols.has(sym)) {
+      try {
+        return await this.binance.getTicker(sym);
+      } catch (_err) {
+        return await this.mock.getTicker(sym);
+      }
     }
+    if (this.realSymbols.has(sym)) {
+      try {
+        return await this.realStock.getTicker(sym);
+      } catch (_err) {
+        return await this.mock.getTicker(sym);
+      }
+    }
+    return await this.mock.getTicker(sym);
   }
 
   public async getOrderBook(symbol: string, depth = 10): Promise<OrderBookData> {
+    const sym = symbol.toUpperCase();
     try {
-      return await this.selectProvider(symbol).getOrderBook(symbol, depth);
+      return await this.selectProvider(sym).getOrderBook(sym, depth);
     } catch (_err) {
-      return await this.mock.getOrderBook(symbol, depth);
+      return await this.mock.getOrderBook(sym, depth);
     }
   }
 
   public async getCandles(symbol: string, timeframe = '15m', limit = 100): Promise<CandleData[]> {
-    try {
-      return await this.selectProvider(symbol).getCandles(symbol, timeframe, limit);
-    } catch (_err) {
-      return await this.mock.getCandles(symbol, timeframe, limit);
+    const sym = symbol.toUpperCase();
+    if (this.cryptoSymbols.has(sym)) {
+      try {
+        return await this.binance.getCandles(sym, timeframe, limit);
+      } catch (_err) {
+        return await this.mock.getCandles(sym, timeframe, limit);
+      }
     }
+    if (this.realSymbols.has(sym)) {
+      try {
+        return await this.realStock.getCandles(sym, timeframe, limit);
+      } catch (_err) {
+        return await this.mock.getCandles(sym, timeframe, limit);
+      }
+    }
+    return await this.mock.getCandles(sym, timeframe, limit);
   }
 
   public async getTradableSymbols(): Promise<string[]> {

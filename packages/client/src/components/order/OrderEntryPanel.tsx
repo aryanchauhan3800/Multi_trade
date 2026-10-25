@@ -52,19 +52,22 @@ export const OrderEntryPanel: React.FC<OrderEntryPanelProps> = ({
   // Auto-fill price when ticker loads or symbol changes
   React.useEffect(() => {
     if (ticker) {
-      if (limitPrice === 0) setLimitPrice(ticker.lastPrice);
-      if (stopLossPrice === 0) {
-        setStopLossPrice(
-          Number((side === 'BUY' ? ticker.bid * 0.98 : ticker.ask * 1.02).toFixed(ticker.lastPrice > 500 ? 2 : 5))
-        );
-      }
-      if (takeProfitPrice === 0) {
-        setTakeProfitPrice(
-          Number((side === 'BUY' ? ticker.ask * 1.03 : ticker.bid * 0.97).toFixed(ticker.lastPrice > 500 ? 2 : 5))
-        );
-      }
+      setLimitPrice(ticker.lastPrice);
+      setStopLossPrice(
+        Number((side === 'BUY' ? ticker.bid * 0.98 : ticker.ask * 1.02).toFixed(ticker.lastPrice > 500 ? 2 : 5))
+      );
+      setTakeProfitPrice(
+        Number((side === 'BUY' ? ticker.ask * 1.03 : ticker.bid * 0.97).toFixed(ticker.lastPrice > 500 ? 2 : 5))
+      );
     }
-  }, [ticker, symbol, side]);
+  }, [symbol]);
+
+  // Initial fill if empty
+  React.useEffect(() => {
+    if (ticker && limitPrice === 0) {
+      setLimitPrice(ticker.lastPrice);
+    }
+  }, [ticker]);
 
   const currentPrice = useMemo(() => {
     if (!ticker) return 0;

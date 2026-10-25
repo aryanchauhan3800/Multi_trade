@@ -34,6 +34,47 @@ interface TradingChartProps {
 export type ChartType = 'candlestick' | 'line' | 'area';
 export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1D' | '1W';
 
+export interface SymbolMeta {
+  name: string;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+}
+
+export const SYMBOL_METADATA: Record<string, SymbolMeta> = {
+  BTCUSD: { name: 'Bitcoin / US Dollar', iconBg: '#f7931a', iconColor: '#ffffff', label: '₿' },
+  ETHUSD: { name: 'Ethereum / US Dollar', iconBg: '#627eea', iconColor: '#ffffff', label: 'Ξ' },
+  SOLUSD: { name: 'Solana / US Dollar', iconBg: '#14f195', iconColor: '#090d16', label: '◎' },
+  BNBUSD: { name: 'BNB / US Dollar', iconBg: '#f3ba2f', iconColor: '#090d16', label: 'BNB' },
+  XRPUSD: { name: 'Ripple XRP / US Dollar', iconBg: '#23292f', iconColor: '#ffffff', label: '✕' },
+  DOGEUSD: { name: 'Dogecoin / US Dollar', iconBg: '#c2a633', iconColor: '#ffffff', label: 'Ð' },
+  ADAUSD: { name: 'Cardano / US Dollar', iconBg: '#0033ad', iconColor: '#ffffff', label: '₳' },
+  AVAXUSD: { name: 'Avalanche / US Dollar', iconBg: '#e84142', iconColor: '#ffffff', label: '▲' },
+  LINKUSD: { name: 'Chainlink / US Dollar', iconBg: '#375bd2', iconColor: '#ffffff', label: '⬡' },
+  DOTUSD: { name: 'Polkadot / US Dollar', iconBg: '#e6007a', iconColor: '#ffffff', label: '●' },
+  NEARUSD: { name: 'NEAR Protocol / US Dollar', iconBg: '#000000', iconColor: '#ffffff', label: 'N' },
+  EURUSD: { name: 'Euro / US Dollar', iconBg: '#003399', iconColor: '#ffffff', label: '€' },
+  GBPUSD: { name: 'British Pound / US Dollar', iconBg: '#cf142b', iconColor: '#ffffff', label: '£' },
+  USDJPY: { name: 'US Dollar / Japanese Yen', iconBg: '#b91c1c', iconColor: '#ffffff', label: '¥' },
+  XAUUSD: { name: 'Spot Gold / US Dollar', iconBg: '#eab308', iconColor: '#090d16', label: 'Au' },
+  WTI: { name: 'Crude Oil WTI', iconBg: '#334155', iconColor: '#ffffff', label: '🛢' },
+  AAPL: { name: 'Apple Inc.', iconBg: '#0f172a', iconColor: '#ffffff', label: '' },
+  NVDA: { name: 'NVIDIA Corporation', iconBg: '#76b900', iconColor: '#ffffff', label: 'N' },
+  SPX: { name: 'S&P 500 Index', iconBg: '#dc2626', iconColor: '#ffffff', label: 'SPX' },
+};
+
+export const getSymbolMeta = (sym: string): SymbolMeta => {
+  const upper = (sym || '').toUpperCase();
+  return (
+    SYMBOL_METADATA[upper] || {
+      name: `${upper} / US Dollar`,
+      iconBg: '#2563eb',
+      iconColor: '#ffffff',
+      label: upper.slice(0, 3),
+    }
+  );
+};
+
 export const TradingChart: React.FC<TradingChartProps> = ({
   symbol,
   candles,
@@ -47,6 +88,8 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const symbolMeta = useMemo(() => getSymbolMeta(symbol), [symbol]);
 
   const [internalTimeframe, setInternalTimeframe] = useState<Timeframe>('15m');
   const activeTimeframe = externalTimeframe || internalTimeframe;
@@ -113,11 +156,14 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     ctx.clearRect(0, 0, width, height);
     if (width <= 0 || height <= 0) return;
 
+    // Detect theme
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
     if (!candles || candles.length === 0) {
-      ctx.fillStyle = '#64748b';
+      ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
       ctx.font = '13px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`Awaiting Market Liquidity for ${symbol}...`, width / 2, height / 2);
+      ctx.fillText(`Loading real-time candles for ${symbolMeta.name}...`, width / 2, height / 2);
       return;
     }
 
@@ -127,8 +173,6 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     const chartWidth = width - paddingRight;
     const chartHeight = height - paddingBottom - paddingTop;
 
-    // Detect theme
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const gridColor = isDark ? '#19212c' : '#f1f5f9';
     const textColor = isDark ? '#64748b' : '#94a3b8';
     const buyColor = '#10b981';
@@ -145,9 +189,14 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       if (c.volume > maxVolume) maxVolume = c.volume;
     });
 
-    if (currentPrice > 0) {
-      if (currentPrice < minPrice) minPrice = currentPrice;
-      if (currentPrice > maxPrice) maxPrice = currentPrice;
+    if (currentPrice > 0 && isFinite(minPrice) && isFinite(maxPrice)) {
+      const candleAvg = (minPrice + maxPrice) / 2;
+      // Sanity check: Only incorporate currentPrice if within 0.35x to 2.8x of candle average
+      // to prevent cross-symbol price glitches from breaking the y-axis
+      if (currentPrice >= candleAvg * 0.35 && currentPrice <= candleAvg * 2.8) {
+        if (currentPrice < minPrice) minPrice = currentPrice;
+        if (currentPrice > maxPrice) maxPrice = currentPrice;
+      }
     }
 
     // Add padding to price scale
@@ -342,10 +391,19 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       <div className="chart-header-row">
         {/* Left: Symbol Dropdown Pill */}
         <div className="chart-symbol-selector">
-          <div className="chart-symbol-icon" style={{ background: '#f7931a', color: '#fff' }}>
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-              <path d="M15.7 10.3c.3-.8.2-1.8-.4-2.4-.7-.7-1.8-.9-2.8-.8V5h-1.8v2.1h-1.3V5H7.6v2.1H5.5v1.8h1.2c.4 0 .5.2.5.4v5.4c0 .2-.1.4-.5.4H5.5v1.8h2.1v2.1h1.8v-2.1h1.3v2.1h1.8v-2.1c1.8.1 3.2-.8 3.6-2.5.3-1.1-.1-2.2-.9-2.9.7-.3 1.2-1 1.4-1.9zM9.4 8.7h2.8c.8 0 1.5.3 1.5 1.1s-.7 1.1-1.5 1.1H9.4V8.7zm3.3 5.9H9.4v-2.4h3.3c.9 0 1.6.4 1.6 1.2s-.7 1.2-1.6 1.2z" />
-            </svg>
+          <div
+            className="chart-symbol-icon"
+            style={{
+              background: symbolMeta.iconBg,
+              color: symbolMeta.iconColor,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: symbolMeta.label.length > 2 ? 8 : 11,
+              fontWeight: 800,
+            }}
+          >
+            {symbolMeta.label}
           </div>
           <span className="chart-symbol-title">{symbol}</span>
           <ChevronDown size={14} className="chart-chevron" />
@@ -407,7 +465,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       {/* Sub-header Legend Row */}
       <div className="chart-legend-row">
         <div className="chart-legend-left">
-          <span className="legend-pair-title">Bitcoin / US Dollar · 15 · NEXUS</span>
+          <span className="legend-pair-title">{symbolMeta.name} · {activeTimeframe} · NEXUS</span>
           <span className="legend-live-dot"></span>
           <span className="legend-ohlc num">
             O<strong className="num">{lastCandle ? formatPrice(lastCandle.open) : '0.00'}</strong>{' '}
